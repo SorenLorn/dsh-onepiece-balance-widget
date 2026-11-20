@@ -1,32 +1,69 @@
-# DSH 小鲸鱼记账挂件（DeepSeek Balance Whale Widget）
+# DSH 海贼王记账挂件（One Piece Balance Widget for DSH）
 
-![DSH 小鲸鱼记账挂件](assets/DSH2.png)
+![DSH 海贼王记账挂件](assets/DSH2.png)
 
-DeepSeek Harness（DSH）Web 界面右下角的常驻挂件：小鲸鱼气泡图 + DeepSeek API 余额 + 今日已用 + 每轮对话消耗，并且**泡泡内容可以完全自定义**（点击序列、模块化排版、并列加权出泡、随机语句/随机图片）。标准 DSH bundle 插件，`dsh plugin` 一键安装，无需任何会话令牌。
+DeepSeek Harness（DSH）Web 界面右下角的常驻挂件：**草帽一伙的角色形象** + DeepSeek API 余额 + 今日已用 + 每轮对话消耗，并且**泡泡内容可以完全自定义**（点击序列、模块化排版、并列加权出泡、随机语句/随机图片）。标准 DSH bundle 插件，`dsh plugin` 一键安装，无需任何会话令牌。
 
-> ⚠️ **Codex 版小鲸鱼已迁至独立仓库** → <https://github.com/Yang-huai406/Codex-Whale-Public>（**已安装用户无需重装**；详见下方「两条分支怎么选」）
-<!-- 迁移横幅（v0.3.19 起）：迁移稳定后（约 2026-11，或发过 1–2 个版本）可只删这一行 blockquote，保留下方分支表与「致谢」——别让它长期占着第一屏 -->
+> 🏴‍☠️ **本仓库是 [月匠 MeteorNOX 的「小鲸鱼记账挂件」](https://github.com/MeteorNOX/DeepSeek-Balance-Whale-Widget) 的二次开发（fork）**：记账内核、余额观测、泡泡系统、音效与吸附等能力全部沿用上游；本仓库在此基础上做**主题化改造** —— 把「一只鲸鱼」换成**草帽一伙 9 位角色**，每个角色带待机 / 被点击 / 等待回答 / 余额告警多种状态帧，可在挂件菜单里随时切换（见 [角色皮肤：9 位草帽一伙](#角色皮肤9-位草帽一伙)）。
 
-## 两条分支怎么选
+## 二次开发改了什么
 
-本仓库现在只维护**一条产品线**（`main`，同一个包同时支持 DSH Web 与官方桌面客户端）。按你要挂在哪里选：
+上游是「一只小鲸鱼 + 可上传自己的角色图」，本仓库把它改造成**多角色皮肤制**：形象不再是一张静态图，而是按状态切帧的角色包。
 
-| 你要挂在哪 | 用哪条分支 | 安装方式 |
+| 能力 | 上游（原鲸鱼挂件） | 本仓库（海贼王主题二次开发） |
 |---|---|---|
-| **DSH Web 界面右下角**（就是这个 README 描述的插件） | `main`（默认分支） | `dsh plugin --profile web add dsh-whale-widget`（推荐，装 npm 已发布版）；也可以从本仓库装 `dsh plugin --profile web add github:MeteorNOX/DeepSeek-Balance-Whale-Widget`，但那样装的是 **main 当前状态、不跟随已发布版本** |
-| **官方桌面客户端（Electron）右下角** | `main`（同一个包） | ⚠️ **不能用** `--profile web`（桌面端读的是 `desktop` profile，CLI 也拒绝 `--profile desktop`）—— 在桌面端会话里**让 DSH 自己装**，见下方「官方桌面端（Electron 客户端）请先看这一节」 |
-| **Codex 桌面应用**（跟随 Codex 窗口、无独立网页） | ⚠️ **已迁出本仓库** | [新仓库](https://github.com/Yang-huai406/Codex-Whale-Public) · [最新版下载](https://github.com/Yang-huai406/Codex-Whale-Public/releases/latest) · **已安装用户无需重装**<br>**Codex 版迁移公告**：本次迁移保留了**开发历史、历代版本与作者贡献**，并清理了旧图片中的非必要元数据（贡献者致谢见文末「致谢」）。后续更新、问题反馈与版本发布都在新仓库；反馈问题时请注明**版本、系统和复现步骤**，勿上传密钥、完整配置或未脱敏日志。 |
+| 形象 | 单张鲸鱼 cut-out（`DSniang1.png`），气泡由代码绘制 | **9 套角色包**，每套 `idle` / `tap` / `wait`，路飞与乔巴另有 `warning` |
+| 切换方式 | 图库上传 / 内置形象 | 菜单「**形象**」一行分段按钮，点一下即切；选择存 `localStorage` 的 `dshw-pack` |
+| 状态表现 | 一张图 + CSS 形变 | **状态帧 + CSS 动作**：点角色换表情、思考时换表情、余额告警换表情，帧与动作分离 |
+| 素材管线 | 无 | `tools/prep-art.py`：去底抠图 → 去白边 → 1024 归一 → 同包曝光统一 → 状态命名 |
+| 记账 / 泡泡 / 音效 / 吸附 | 上游实现 | **未改动**，全部沿用 |
 
-⚠️ **两条线互不兼容**：Codex 版不能用 `dsh plugin … add` 装进 DSH 网页，本仓库的插件也不能在 Codex 桌面里运行。
+上游另有一条 **Codex 桌面端分支**（[Codex-Whale-Public](https://github.com/Yang-huai406/Codex-Whale-Public)），与本仓库无关；本仓库只面向 **DSH Web 界面**。
 
-⚠️ **安装方式二选一、别混用**（npm 名 / `github:`）—— 它们是同一个包名，先后安装会并存冲突；已经是 `github:` 装的，要换 npm 名请先 `dsh plugin --profile web remove dsh-whale-widget`。
+## 角色皮肤：9 位草帽一伙
+
+挂件菜单里点「形象」一行即可切换角色，切换后立刻换脸（不需要刷新），选择记在 `localStorage` 的 `dshw-pack`，下次打开沿用。
+
+| 包 id | 角色 | 待机 `idle` | 被点击 `tap` | 等待回答 `wait` | 余额告警 `warning` |
+|---|---|---|---|---|---|
+| `luffy` | 路飞 | ✅ | ✅ | ✅ | ✅ |
+| `chopper` | 乔巴 | ✅ | ✅ | ✅ | ✅ |
+| `zoro` | 索隆 | ✅ | ✅ | ✅ | — |
+| `nami` | 娜美 | ✅ | ✅ | ✅ | — |
+| `usopp` | 乌索普 | ✅ | ✅ | ✅ | — |
+| `sanji` | 山治 | ✅ | ✅ | ✅ | — |
+| `robin` | 罗宾 | ✅ | ✅ | ✅ | — |
+| `jinbe` | 甚平 | ✅ | ✅ | ✅ | — |
+| `brook` | 布鲁克 | ✅ | ✅ | ✅ | — |
+
+### 状态什么时候会变
+
+同一个角色在不同场景切不同的帧，帧再叠一层 CSS 动作（`whale-widget.js` 里的 keyframes）：
+
+| 触发场景 | 状态帧 | 动作 | 音效 |
+|---|---|---|---|
+| 静置常驻 | `idle` | 4.2s 呼吸 | — |
+| 点角色 / 点泡泡 | `tap` | 挤压回弹 | `tap`（`sfx/snap.wav`） |
+| 任何按压结束（松手） | 保持当前帧 | 落地缓冲 `land` | `land`（`sfx/thud.wav`） |
+| 拖拽超过 3px | 保持当前帧 | 小幅摆动 `hold` | — |
+| 每轮对话结算（扣费） | 保持当前帧 | 起跳 `jump` | `cost`（`sfx/coin.wav`） |
+| 模型思考 / 输出中 | `wait` | 慢速点头 `busy` | — |
+| 提问 / 授权挂起 | `wait` | 循环摇晃 | `wait`（`sfx/alert.wav`） |
+| 余额低于预警线 | `warning`（有则用，无则回落 `idle`） | 抖动 | — |
+
+几个要记住的点：
+
+- **缺帧自动降级**：某个角色没有 `warning`（目前只有路飞、乔巴有），告警时就回落到 `idle`，不会报错、也不会出现碎图。
+- **切角色不重置记账**：换皮肤只换图，账本、今日已用、泡泡配置都不受影响。
+- 想加第 10 位角色：把三张图丢进 `assets/packs/<新id>/`、写一份 `pack.json`，或直接用 `tools/prep-art.py` 从原图生成（见[素材流水线](#角色包与动作引擎)）。
+
 
 ## 特性
 
 ### 记账与显示
 
 - 🐋 **常驻自启**：随 DSH Web 界面每次打开自动出现（标准 DSH bundle 插件）
-- 💰 **余额**：60 秒自动刷新 + 点击鲸鱼手动刷新；余额变化时数字**滚动动画**；瞬时网络抖动自动沿用最近余额不报错。**两种取数方式，API key 优先**：① DSH 凭据里的 `DEEPSEEK_API_KEY`；② **DSH 账号登录态** —— 通过「设置 → 账号与余额」登录了 DeepSeek 账号、又没配 API key 时自动使用（**不需要去 platform 建 key**）
+- 💰 **余额**：60 秒自动刷新 + 点击角色手动刷新；余额变化时数字**滚动动画**；瞬时网络抖动自动沿用最近余额不报错。**两种取数方式，API key 优先**：① DSH 凭据里的 `DEEPSEEK_API_KEY`；② **DSH 账号登录态** —— 通过「设置 → 账号与余额」登录了 DeepSeek 账号、又没配 API key 时自动使用（**不需要去 platform 建 key**）
 - 📊 **今日已用（小鲸鱼记账）**：不需要任何令牌。余额**下降**按观测累计为消费，余额**上升**（充值 / 赠金）单独记录、不会冲掉已有消费；检测到余额增加会提示「待核对余额调整」，可在「小鲸鱼记账 → **DeepSeek（内置）→ 设置 → 余额校正**」按实际累计到账金额与非调用扣减校正 —— **「已观测消费」与「余额校正」都是 DeepSeek 账户口径**（由该 API key 的余额观测得出，不含其它厂商；「本机模型费用」才是所有模型的本地估算）（逐轮明细保留 90 天或最多 2 万条、逐日归档保留 365 天，超期数据归档到 `.dshw-usage-archive.json`）；金额按 8 位小数记账、显示保留两位
 - 💬 **每轮对话消耗**：监听 DSH 本机会话事件，按模型**真实 usage**（input / cache / output / reasoning tokens）换算金额，每轮结束弹出消耗泡泡；可开关、自动关闭秒数可设（0 = 不自动关闭），**泡泡内容可自定义**（模块化，金额用 `{cost}` 引用），入口：菜单 → 「音效与提示」→ 「全局设置」→ 展开「每轮消耗提示」→「编辑提示内容」
 - ⛰️ **峰谷定价**：工作日高峰 9:00–12:00、14:00–18:00（北京时间），其余空闲；2026-08-23 起**周末全天谷价**。峰谷模块支持状态文字、倒计时、"梁文峰谷 / !?强强?! / 简洁"等多种样式
@@ -39,8 +76,8 @@ DeepSeek Harness（DSH）Web 界面右下角的常驻挂件：小鲸鱼气泡图
 - 🧸 **按压 Q 弹**玩偶效果（按压时底部坐标不变）
 - 🎚️ **主菜单**：角色、大小滑块、**音效与提示**（这行只剩入口按钮「全局设置」，音效总开关已搬进面板）、气泡全局开关 + 「按压泡泡设置」、避让滚动条、吸附设置、隐藏菜单按钮、资源管理（含余额预警、今日预算、小鲸鱼记账）
 - 🔊 **提示与音效设置**（主菜单 → 「音效与提示」→ 「全局设置」）：**四个入口行** —— **按压音效**（音效组、音量）、**每轮消耗提示**（冒泡提示、自动关闭秒数、任务结束音、提示音量）、**提问提示**、**授权提示**。入口行上就是该事件的**总开关**与**当前值摘要**（如 `默认音效组 · 100%`、`自动关 180s · 叮～`），**点一行才展开**该区的设置项（可同时展开多个）。**每个音效都有独立音量**，每行带「试听」；音效行左侧的 `[✓]` 决定该音效**响不响**（不响 = 仍可冒泡）。底栏 `取消 / 恢复默认 / 保存` —— 面板内的改动**只落内存**，点「保存」才生效，点「取消」完整还原（「恢复默认」之后点取消同样能撤销）
-- 🙈 **可隐藏菜单按钮**：隐藏后，电脑端**右键鲸鱼**、手机端**长按鲸鱼约 1.5 秒**唤出菜单
-- 📱 **移动端友好**：鲸鱼可触摸拖动（自研触摸接管，不会把页面手势判成滚动导致拖不动）；泡泡编辑器支持**长按 0.4 秒进入拖拽排序**；去掉了浏览器默认的点击高亮方块
+- 🙈 **可隐藏菜单按钮**：隐藏后，电脑端**右键角色**、手机端**长按角色约 1.5 秒**唤出菜单
+- 📱 **移动端友好**：角色可触摸拖动（自研触摸接管，不会把页面手势判成滚动导致拖不动）；泡泡编辑器支持**长按 0.4 秒进入拖拽排序**；去掉了浏览器默认的点击高亮方块
 
 ### 泡泡系统（核心）
 
@@ -73,14 +110,17 @@ DeepSeek Harness（DSH）Web 界面右下角的常驻挂件：小鲸鱼气泡图
 - ⏳ **提问音 / 授权音**：DSH 需要你回答或批准时播放；与任务结束音共用同一套音效库，**各自可调音量**，音效行左侧的 `[✓]` 决定「响不响」（不响 = 仍会冒泡提示）
 - 🔉 **音量：一条全局 + 三条按事件**：①区「按压音效」的音量是**全局基准**（按压 / 松开音用它）；②③④ 区（每轮消耗提示 / 提问提示 / 授权提示）各有一条自己的音量滑块，每行都带「试听」。**没动过某个事件的滑块时，它跟随①区音量**（入口行摘要会写明 `跟随按压音量 N%`）；**一旦你拖过那个滑块，就按你设的值播**（摘要只显示百分比）。这样既能"一个总音量管全局"，也能单独压低某类提示音。
 - ✂️ **音频片段管理**：导入时可视化裁剪、试听；资源管理窗口（菜单 → 资源管理 → 「管理」）按 **图片 / 音频 两个可折叠入口**统一查看/试听/删除 —— 入口行右侧直接显示数量（如 `角色 1 · 泡泡图 2`、`音效组 3 · 片段 4`），点一行才展开明细；「导入片段」在音频那一区里；收起/展开时会顺带停掉正在试听的那一段
-- 🐳 **自定义角色**：上传自己的鲸鱼图片（图库管理，可回退默认）
+- 🏴‍☠️ **9 位角色皮肤**：内置草帽一伙 —— 路飞 / 乔巴 / 索隆 / 娜美 / 乌索普 / 山治 / 罗宾 / 甚平 / 布鲁克，每位按 `idle`（待机）/ `tap`（被点击）/ `wait`（等待回答）切帧，路飞与乔巴另有 `warning`（余额告警）；菜单「形象」一行即点即切，无需刷新。详见 [角色皮肤：9 位草帽一伙](#角色皮肤9-位草帽一伙)
+- 🐳 **自定义角色图**：仍可上传自己的图片（图库管理，可回退默认）
 - 🖼️ **泡泡图库**：内置 `petpet`、`money1` 两张图，也可上传 png/gif，供图片/随机图片模块使用
 
-### 角色包与动作引擎
+### 角色包与动作引擎（实现细节）
+
+面向使用者的切换方式、状态表现见上面的 [角色皮肤：9 位草帽一伙](#角色皮肤9-位草帽一伙)；这一节讲目录约定与实现。
 
 角色不再只支持「一张静态图」：`assets/packs/<id>/` 目录里放 `pack.json` + 多张状态图 + 音效，挂件启动时按包加载。
 
-**内置九个包**（草帽一伙）：`luffy` 路飞、`chopper` 乔巴、`zoro` 索隆、`nami` 娜美、`usopp` 乌索普、`sanji` 山治、`robin` 罗宾、`jinbe` 甚平、`brook` 布鲁克。菜单里「形象」一行是分段按钮，点一下就切，选择记在 `localStorage` 的 `dshw-pack`；只有一个包时这一行自动隐藏。
+**包列表怎么来的**：宿主扫描 `assets/packs/*/pack.json`，把**真实存在**的文件整理成 `GET /dsh-whale/packs.json` 下发（缺图的状态在宿主侧就被过滤，前端拿不到 404 地址）；前端据此渲染菜单里「形象」一行的分段按钮，点击写入 `localStorage` 的 `dshw-pack`，只替换角色 `<img>` 的 `src`，不重建挂件、不影响记账。只有一个包时这一行自动隐藏；删包 = 删目录。
 
 ```
 assets/packs/luffy/
@@ -163,7 +203,7 @@ python tools/prep-art.py --check  # 只统计各帧白边残留，不改文件
 ### Codex 模式（本地会话统计）
 
 > ℹ️ **先分清楚**：这一节说的是本插件**读取本机 Codex 会话日志**的能力（属于 `main`，就是把 Codex 当数据源），
-> 与**「Codex 版小鲸鱼」挂件**（跟随 Codex 窗口的那个端口）是两回事 —— 后者**已迁出本仓库**，见「两条分支怎么选」里的「Codex 版迁移公告」。
+> 上游另有一条面向 **Codex 桌面端**的端口（[Codex-Whale-Public](https://github.com/Yang-huai406/Codex-Whale-Public)），与本仓库（DSH Web 版）不通用。
 
 > ⚠️ **限制**：Codex 支持目前只是**部分接口适配**，本挂件**不能安装到 Codex 里**（它是 DSH Web 插件，Codex 仅作为数据来源被读取）；订阅窗口没有真实订阅样本可验证，遇异常欢迎反馈。
 
@@ -178,18 +218,26 @@ python tools/prep-art.py --check  # 只统计各帧白边残留，不改文件
 ## 目录结构
 
 ```text
-dsh-whale-widget/
+dsh-onepiece-balance-widget/
 ├── package.json              # DSH bundle 插件元数据（dsh.bundle.patch 指向 cordis.patch.yml；顶层 icon 指向 icon.png）
 ├── icon.png                  # 插件列表图标（256×256 PNG，含透明；宿主读成 data URL 塞进 meta.icon，必须是正方形）
 ├── README.md                 # 本文件
+├── PROVENANCE.md             # 美术素材来源与权利说明（二次开发新增）
 ├── cordis.patch.yml          # 插件挂载声明
 ├── lib/
-│   ├── index.js              # 宿主侧插件本体（路由 + 记账 + 音效/图片/角色服务）
+│   ├── index.js              # 宿主侧插件本体（路由 + 记账 + 音效/图片/角色服务 + 角色包扫描）
 │   └── accounting.mjs        # 记账内核（定点金额运算 + 余额观测/校正账本）
 ├── assets/
 │   ├── whale-widget.js       # 前端挂件本体（由宿主按 mtime 热读取）
+│   ├── packs/                # ★ 角色皮肤（二次开发核心）：9 个目录 = 9 位角色
+│   │   ├── luffy/            #   路飞：pack.json + idle/tap/wait/warning.png + sfx/ + emblem.svg
+│   │   ├── chopper/          #   乔巴：同上（含 warning）
+│   │   ├── zoro/             #   索隆：idle / tap / wait
+│   │   ├── nami/ usopp/ sanji/ robin/ jinbe/ brook/
+│   │   │                     #   娜美 / 乌索普 / 山治 / 罗宾 / 甚平 / 布鲁克：同为三态
+│   │   └── ...               #   每个目录都是 pack.json + 状态帧 + sfx/ + emblem.svg
 │   ├── DSH2.png              # README 顶部展示图
-│   ├── DSniang1.png          # 小鲸鱼本体（cut-out，气泡由代码绘制）
+│   ├── DSniang1.png          # 默认鲸鱼形象（保留：删掉全部角色包时兜底）
 │   ├── DSniang02.png         # 备用整图（兼容旧版手动安装路径）
 │   ├── rua.gif               # 随机台词/撒娇动图（可选）
 │   ├── Ya1.mp3 / Ya2.mp3     # 预置音效「小黄鸭」按压 / 松开
@@ -198,6 +246,11 @@ dsh-whale-widget/
 │   ├── task-end-a.wav        # 任务结束音内置预设（A）
 │   ├── bubble-petpet.gif     # 内置泡泡图：petpet
 │   └── bubble-money1.gif     # 内置泡泡图：money1（余额预警默认内容的配图）
+├── tools/
+│   ├── prep-art.py           # ★ 素材流水线：去底 → 去白边 → 1024 归一 → 曝光统一 → 状态命名
+│   ├── make-sfx.mjs          # 程序合成内置音效
+│   └── ci-audit.mjs          # CI 自检（含「assets/packs 是否都被 git 跟踪」）
+├── 待机娜美.png / 被点击娜美.png / …   # 原始立绘（不进包，只作为 prep-art.py 的输入）
 └── whale-widget-prompt.md    # 完整规格/维护提示词（面向二次开发）
 ```
 
@@ -287,7 +340,7 @@ dsh plugin --profile web add link:D:\Plugins\dsh-whale-widget
 无需本地克隆，一条命令安装：
 
 ```powershell
-dsh plugin --profile web add github:MeteorNOX/DeepSeek-Balance-Whale-Widget
+dsh plugin --profile web add github:SorenLorn/dsh-onepiece-balance-widget
 ```
 
 说明：
@@ -295,7 +348,7 @@ dsh plugin --profile web add github:MeteorNOX/DeepSeek-Balance-Whale-Widget
 - 装完后插件会出现在 DSH 的**插件管理页面**里，之后可以直接在页面里更新，无需再手动执行命令
 - 网络环境需要代理时，先设置代理环境变量再执行：
   ```powershell
-  $env:http_proxy="http://<ip>:<port>"; $env:https_proxy="http://<ip>:<port>"; $env:all_proxy="socks5://<ip>:<port>"; dsh plugin --profile web add github:MeteorNOX/DeepSeek-Balance-Whale-Widget
+  $env:http_proxy="http://<ip>:<port>"; $env:https_proxy="http://<ip>:<port>"; $env:all_proxy="socks5://<ip>:<port>"; dsh plugin --profile web add github:SorenLorn/dsh-onepiece-balance-widget
   ```
 - 安装完成后重启 `dsh web`，再 F5 刷新浏览器
 
@@ -312,7 +365,7 @@ dsh plugin --profile web add link:.
 - `dsh plugin` 会把参数转发给 pnpm，并在成功后自动把 `dsh-whale-widget` 加入 `dsh.profile.bundles`
 - **`link:.` 表示链接当前目录**（仓库根目录本身就是插件包）。如果仓库在别处，用绝对路径：
   ```powershell
-  dsh plugin --profile web add link:D:\你的路径\DeepSeek-Balance-Whale-Widget
+  dsh plugin --profile web add link:D:\你的路径\dsh-onepiece-balance-widget
   ```
 - ⚠️ 不要用 `link:.\dsh-whale-widget`——仓库里**没有** `dsh-whale-widget/` 子目录，这样会安装成普通依赖而非插件
 - 安装完成后重启 `dsh web`，再 F5 刷新浏览器
@@ -320,15 +373,17 @@ dsh plugin --profile web add link:.
 
 ### 方式 D：发布到 npm 后安装
 
-```powershell
+```text
 dsh plugin --profile web add dsh-whale-widget
 ```
+
+⚠️ **注意包名**：`dsh-whale-widget` 这个 npm 名仍属于上游「小鲸鱼」版本（本 fork 未单独发版，`package.json` 的 name 沿用上游以免破坏 bundle 解析）。**想装海贼王版请用方式 B（`github:`）或方式 C（`link:.`）**，否则装到的是没有角色包的鲸鱼版。
 
 ### 给 AI 的安装说明（Web 使用；桌面端使用上面的 `plugin_manager` 提示）
 
 ```
 请帮我安装插件 dsh-whale-widget。可能的来源有两种：GitHub 仓库
-MeteorNOX/DeepSeek-Balance-Whale-Widget，或者我本地已经有这个插件的「完整资源包」。
+SorenLorn/dsh-onepiece-balance-widget（海贼王主题二次开发版），或者我本地已经有这个插件的「完整资源包」。
 
 先确认运行形态：如果当前是官方桌面客户端，请使用宿主内置 plugin_manager，
 不要执行下面的 Web 命令，也不要自行构造认证/RPC或修改 desktop profile。
@@ -339,7 +394,7 @@ MeteorNOX/DeepSeek-Balance-Whale-Widget，或者我本地已经有这个插件�
 2. 在 Web profile 安装（按我实际拿到的来源任选一种）：
 
    【来源一：从 GitHub 安装】
-     dsh plugin --profile web add github:MeteorNOX/DeepSeek-Balance-Whale-Widget
+     dsh plugin --profile web add github:SorenLorn/dsh-onepiece-balance-widget
    或从本地 git 仓库链接安装：
      dsh plugin --profile web add link:<仓库绝对路径>
    （注意：仓库根目录就是插件包，不要写成 link:.\dsh-whale-widget 这种带子目录的路径）
@@ -520,8 +575,8 @@ curl "http://127.0.0.1:3080/dsh-whale/pack-asset?id=luffy&f=idle.png"
 - **保存后设置没生效 / 保存到底成没成**：0.3.17 起保存失败**不再静默** —— 点「保存」若写入失败，会自动重试一次，仍失败则弹出 `⚠ 设置保存失败：<原因>`（例如数据目录只读、接口被拦）。看到这条提示说明**这次改动没有落盘**，请按原因处理后再保存一次。
 - **等待提问 / 授权的气泡关不掉**：**点一下那个气泡即可收起**（同一条挂起不会再自动弹回；你回答/批准后，或下一次新的提问/授权到来时照常提示）。想让**点角色（鲸鱼）也能收起**提示气泡，去「音效与提示 → 全局设置」面板最下面勾上「**点按角色关闭提示气泡**」（默认关）。两处说明都收在旁边的 `?` 圈圈里。
 - **换了 / 删了 API key 之后，更早的记账天变成「本地估算 ¥0.00」**：记账按**密钥指纹分本**（一把 key 一本账），换 key 等于换了一本 —— 数据**没丢**，都在 `.dshw-usage.json` 的 `accounting.books` 里。当前版本已让界面把历史本里的日期正常显示（标注「已观测消费 · 历史账户」），并在「小鲸鱼记账」面板顶部提示「检测到 N 个记账本」；**两个本不会被相加**（插件无法判断两次是不是同一个账户），但同一天的明细可以在该面板的「每日与逐条明细」里逐日查看。
-- **手机上拖不动鲸鱼**：本版本已用触摸事件接管拖拽，请硬刷新页面拿到最新 `whale-widget.js`；仍不行请反馈浏览器型号。
-- **隐藏了菜单按钮怎么进菜单**：电脑端右键鲸鱼，手机端长按鲸鱼约 1.5 秒。
+- **手机上拖不动角色**：本版本已用触摸事件接管拖拽，请硬刷新页面拿到最新 `whale-widget.js`；仍不行请反馈浏览器型号。
+- **隐藏了菜单按钮怎么进菜单**：电脑端右键角色，手机端长按角色约 1.5 秒。
 - **改了前端代码不生效**：前端 `assets/whale-widget.js` 由宿主按 mtime 热读取，**硬刷新**（Ctrl+F5）即可；改了宿主 `lib/index.js` 必须**重启 `dsh web`**。
 - **模型名看不懂**：账本记录的是 API 模型 id；`deepseek-flash` 即 DeepSeek-V4.1-Flash，旧名 `deepseek-v4-flash` / `-vision-exp` 现在也由同一颗 V4.1-Flash 提供并按 Flash 计价（面板里已加标注）。
 
@@ -543,6 +598,8 @@ curl "http://127.0.0.1:3080/dsh-whale/pack-asset?id=luffy&f=idle.png"
 - 本地联调：`dsh plugin --profile web add link:.` 后，改前端 → Ctrl+F5；改宿主 → 重启 `dsh web`。
 
 ## 致谢
+
+- **上游项目与原作者**：本项目整体来自 **[月匠 MeteorNOX](https://github.com/MeteorNOX) 的 [DeepSeek-Balance-Whale-Widget](https://github.com/MeteorNOX/DeepSeek-Balance-Whale-Widget)**（DSH 小鲸鱼记账挂件）—— 记账内核、余额观测与校正、泡泡系统、音效系统、吸附与翻转、插件打包方式都是上游的实现，本仓库只做海贼王主题的二次开发（角色皮肤制 + 素材管线）。上游采用 MIT 许可，其贡献者名单见下方各条。
 
 - **Codex 版小鲸鱼的迁移与后续维护**：经协商，**Codex 端口已迁至独立仓库 [Codex-Whale-Public](https://github.com/Yang-huai406/Codex-Whale-Public)**（由 [@Yang-huai406](https://github.com/Yang-huai406) 维护）—— 迁移保留了开发历史、作者贡献与历代版本，并清理了旧图片中的非必要元数据；原作者 **月匠（MeteorNOX）** 与 **macOS 适配贡献者 [@1llysviel](https://github.com/1llysviel)** 的贡献一并保留。**已安装的用户无需因迁移重新安装**，后续请从新仓库获取更新。感谢这次把历史完整接过去的处理方式。
 - **0.3.17 的「②区『提示音量』滑块其实不生效 + ②区『冒泡提示』没人读」**由一位 **QQ 群友**（未留 GitHub 账号）做了一轮完整的代码分析后报告：他复现了"拖到最低仍出声"、定位到 `playTaskEndSound()` 读的是①区全局音量、并附了可复用的补丁与两个预打版压缩包供对比。**这两个都是真 bug**（第二个是我顺着他的思路查出来的），0.3.17 已按"解析器 + 三态音量"的方式修复（比补丁覆盖面更广：**音效组那条路也修了**），并新增了一条 CI 检查专门拦这类"控件有值、没有消费方"的问题。感谢他的报告。
