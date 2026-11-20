@@ -1562,6 +1562,23 @@ function dshwvReact(state, holdMs, soundEv, frameKey) {
     dshwvPlayPackSound(soundEv || state)
   } catch (err) {}
 }
+// 一个角色包的全部状态帧 URL（去重）。命中凸包按这批图的并集算，
+// 保证任何一帧都不会被裁掉（见 setupHitTest 的注释）。
+function dshwvPackHitUrls(pack) {
+  var out = []
+  try {
+    var f = pack && pack.frames
+    if (f) {
+      for (var k in f) {
+        if (!Object.prototype.hasOwnProperty.call(f, k)) continue
+        var u = dshwvPackAsset(f[k])
+        if (u && out.indexOf(u) < 0) out.push(u)
+      }
+    }
+    if (!out.length && dshwvPackIdleUrl) out.push(dshwvPackIdleUrl)
+  } catch (err) {}
+  return out
+}
 function dshwvApplyPack(pack) {
   try {
     if (!pack || !pack.id) return
@@ -1585,9 +1602,9 @@ function dshwvApplyPack(pack) {
       }
       img.onload = function () { try { img.onerror = null; img.onload = null } catch (err) {} }
       img.src = dshwvPackIdleUrl
-      // 命中图跟随**待机帧**重建：610x610 画布按 alpha 现算凸包。
-      // 多帧动作不改命中区（否则每跳一次都要重算 1.5MB 像素，纯浪费）。
-      try { setupHitTest(dshwvPackIdleUrl) } catch (err) {}
+      // 命中图跟随**整包**重建：610x610 画布上叠出所有状态帧的并集再算凸包。
+      // 只在换包时算一次，切帧不重算；并集保证切到 tap / wait 时轮廓不会被裁。
+      try { setupHitTest(dshwvPackHitUrls(pack)) } catch (err) {}
     }
     // 徽标：包给了就显示，没给就隐藏（换包时不能残留上一个包的旗）
     try {
@@ -1626,7 +1643,7 @@ function dshwvReapplyPack() {
     if (!dshwvPack || !dshwvPackIdleUrl) return
     if (String(img.getAttribute('src') || '') === dshwvPackIdleUrl) return
     img.src = dshwvPackIdleUrl
-    try { setupHitTest(dshwvPackIdleUrl) } catch (err) {}
+    try { setupHitTest(dshwvPackHitUrls(dshwvPack)) } catch (err) {}
   } catch (err) {}
 }
 var dshwvPackList = []
@@ -22023,27 +22040,44 @@ audioEditReleaseBtn.addEventListener('click', function (e) { e.stopPropagation()
 var hitCanvas = null
 var hitReady = false
 var hitFailed = false // 命中图加载失败（如图片 404/资源缺失）：退回矩形区域判定，绝不吞掉整页事件
-function setupHitTest(url) {
+// 命中图：按传入的所有图片取**并集**再算凸包。
+// 为什么要并集：凸包裁切（applyHitClip）作用在 <img> 上，是**视觉裁切**而不是只裁点击区。
+// 早先只拿待机帧算凸包，切到抬手的 tap / 举武器的 wait 时，超出的部分就被裁掉了
+// （实测索隆 wait 有 11.5%、娜美 wait 13.0% 的像素落在待机凸包外）。
+// 传入整包所有状态帧后，凸包必然包住每一帧，切帧既不会被裁，点击区也保持稳定。
+var hitSeq = 0
+function setupHitTest(urls) {
   try {
+    var list = Array.isArray(urls) ? urls.filter(Boolean) : (urls ? [urls] : [])
+    if (!list.length) return
+    var seq = ++hitSeq   // 换包时可能连着调两次（applyPack 后紧跟 reapplyPack），旧回调不许覆盖新结果
     hitCanvas = document.createElement('canvas')
     hitCanvas.width = 610
     hitCanvas.height = 610
     hitReady = false
     hitFailed = false
-    var probe = new Image()
-    probe.onload = function () {
+    applyHitClip('')
+    var remain = list.length
+    var probes = []
+    function finish() {
+      remain--
+      if (seq !== hitSeq) return
+      if (remain > 0) return
+      if (!probes.length) { hitFailed = true; return }
       try {
         var ctx = hitCanvas.getContext('2d')
+        ctx.clearRect(0, 0, 610, 610)
         // 按 object-fit:contain + object-position:right bottom 的实际几何绘制，
-        // 使非正方形（如 GIF 动图）的命中区域与显示一致
-        var iw = probe.width || 610
-        var ih = probe.height || 610
-        var scale = Math.min(610 / iw, 610 / ih)
-        var dw = iw * scale
-        var dh = ih * scale
-        var dx = 610 - dw // right bottom
-        var dy = 610 - dh
-        ctx.drawImage(probe, dx, dy, dw, dh)
+        // 使非正方形（如 GIF 动图）的命中区域与显示一致；多张叠加即并集
+        for (var i = 0; i < probes.length; i++) {
+          var p = probes[i]
+          var iw = p.width || 610
+          var ih = p.height || 610
+          var scale = Math.min(610 / iw, 610 / ih)
+          var dw = iw * scale
+          var dh = ih * scale
+          ctx.drawImage(p, 610 - dw, 610 - dh, dw, dh)
+        }
         // v756（issue #144）：画布读回可能被浏览器**抹白** —— Firefox 开启「隐私保护 / resistFingerprinting」
         // 时 getImageData 会返回全透明（有些版本直接抛错）。那样 isWhaleHit 的 `data[3] > 10` 处处为假，
         // 而 hitReady 仍为 true ⇒ 走不到矩形回退分支 ⇒ **整只挂件点不动**。
@@ -22051,8 +22085,8 @@ function setupHitTest(url) {
         var opaque = 0
         for (var gy = 0; gy < 6; gy++) {
           for (var gx = 0; gx < 6; gx++) {
-            var px = Math.min(609, Math.floor(dx + dw * (gx + 0.5) / 6))
-            var py = Math.min(609, Math.floor(dy + dh * (gy + 0.5) / 6))
+            var px = Math.min(609, Math.floor(610 * (gx + 0.5) / 6))
+            var py = Math.min(609, Math.floor(610 * (gy + 0.5) / 6))
             if (ctx.getImageData(px, py, 1, 1).data[3] > 10) opaque++
           }
         }
@@ -22066,13 +22100,21 @@ function setupHitTest(url) {
         applyHitClip('')
       }
     }
-    probe.onerror = function () {
-      // 图片加载失败：不能把整页当成鲸鱼命中区吞掉事件（会全页面点不动），
-      // 标记失败，命中判定退回图像矩形区域。
-      hitFailed = true
-      applyHitClip('')
+    for (var k = 0; k < list.length; k++) {
+      (function (u) {
+        var probe = new Image()
+        probe.onload = function () {
+          try { probes.push(probe) } catch (err) {}
+          finish()
+        }
+        probe.onerror = function () {
+          // 图片加载失败：不能把整页当成鲸鱼命中区吞掉事件（会全页面点不动），
+          // 标记失败，命中判定退回图像矩形区域。
+          finish()
+        }
+        probe.src = u
+      })(list[k])
     }
-    probe.src = url || IMG_URL
   } catch (err) {}
 }
 // 退回「图像矩形」判定：命中图不可用（加载失败 / 画布读不出来）时只认挂件图片的矩形区域，
