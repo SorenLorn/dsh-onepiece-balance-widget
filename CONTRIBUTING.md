@@ -2,7 +2,7 @@
 
 这是基于 [月匠 MeteorNOX 的小鲸鱼记账挂件](https://github.com/MeteorNOX/DeepSeek-Balance-Whale-Widget) 的**主题化二次开发**（详见 [README](README.md) 与 [PROVENANCE](PROVENANCE.md)）。记账、泡泡、音效等核心逻辑在上游，欢迎把这类改动提给上游；本仓库收的是**主题相关**的贡献。
 
-## 欢迎什么
+## 接受的贡献
 
 - **新角色包**：草帽团以外的角色、或现有角色的补帧（比如给 7 位补 `warning`）
 - **素材处理改进**：`tools/prep-art.py` 的抠图/去白边/曝光统一
