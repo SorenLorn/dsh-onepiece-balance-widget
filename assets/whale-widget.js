@@ -1318,8 +1318,22 @@ var css = [
   '.dshwv-pop.dshwv-pop-open .dshwv-emblem{opacity:.96;transition:opacity .18s ease .34s}',
 
   // ===== 形象切换（菜单里的分段按钮）=====
-  '.dshwv-packseg{display:flex;gap:4px;margin-left:auto;flex:0 0 auto}',
-  '.dshwv-packbtn{border:1px solid rgba(32,49,112,.28);background:none;color:#203170;' +
+  // 9 个角色一排放不下：这一条自己横向滚动，**滚动条画在本行正下方**。
+  // 系统滚动条不能用：Chromium 在 Windows 上给原生横向滚动条加左右箭头，
+  // 6px 的高度被箭头吃满、还带系统灰底，跟菜单里的圆角按钮完全不搭。
+  // 所以隐藏原生滚动条，用一条自绘的轨道 + 滑块（dshwv-packbar / -packthumb）。
+  // flex:1 1 auto + min-width:0 是关键 —— 不给 min-width 的话 flex 子项会被内容撑开，
+  // 溢出的是整行而不是这一条，滚动条就永远不出现。
+  '.dshwv-packwrap{display:flex;flex-direction:column;gap:3px;margin-left:auto;flex:1 1 auto;min-width:0}',
+  '.dshwv-packseg{display:flex;gap:4px;min-width:0;overflow-x:auto;overflow-y:hidden;' +
+  'scrollbar-width:none;-ms-overflow-style:none;overscroll-behavior-x:contain}',
+  '.dshwv-packseg::-webkit-scrollbar{display:none;width:0;height:0}',
+  '.dshwv-packbar{position:relative;height:6px;border-radius:999px;background:rgba(32,49,112,.10);' +
+  'cursor:pointer;touch-action:none;flex:0 0 auto}',
+  '.dshwv-packthumb{position:absolute;top:0;bottom:0;left:0;width:40px;border-radius:999px;' +
+  'background:rgba(32,49,112,.42)}',
+  '.dshwv-packbar:hover .dshwv-packthumb,.dshwv-packbar.dshwv-packbar-drag .dshwv-packthumb{background:rgba(32,49,112,.62)}',
+  '.dshwv-packbtn{flex:0 0 auto;border:1px solid rgba(32,49,112,.28);background:none;color:#203170;' +
   'font-size:11px;line-height:1;padding:3px 9px;border-radius:999px;cursor:pointer;white-space:nowrap}',
   '.dshwv-packbtn:hover{background:rgba(32,49,112,.08)}',
   '.dshwv-packbtn.dshwv-packbtn-on{background:#203170;border-color:#203170;color:#fff}',
@@ -1653,6 +1667,19 @@ function dshwvRenderPackSeg() {
       })(list[i])
     }
     rowPack.style.display = list.length > 1 ? '' : 'none'
+    // 9 个包一排放不下：把当前选中的那颗滚进可视区（首次打开也不会停在最左边）
+    try {
+      var on = packSeg.querySelector('.dshwv-packbtn-on')
+      if (on) {
+        var l = on.offsetLeft
+        var w = on.offsetWidth
+        var cw = packSeg.clientWidth
+        if (l < packSeg.scrollLeft || l + w > packSeg.scrollLeft + cw) {
+          packSeg.scrollLeft = Math.max(0, l - (cw - w) / 2)
+        }
+      }
+    } catch (err) {}
+    dshwvSyncPackBar()
   } catch (err) {}
 }
 function dshwvUsePack(id) {
@@ -2481,10 +2508,94 @@ menuBox.appendChild(rowRole)
 // 用分段按钮而不是弹面板：包只有两三个，多一次点击不值得。
 // 包列表是异步来的，所以这一行先建好、拿到列表前保持隐藏（见 dshwvRenderPackSeg）。
 var rowPack = menuRow()
-rowPack.appendChild(menuLabel('形象'))
+var packLabel = menuLabel('形象')
+packLabel.style.flex = '0 0 auto'   // 标签不参与收缩，滚动的只有右边那条
+rowPack.appendChild(packLabel)
+// 结构：wrap = [按钮条(横向滚动) , 自绘滚动条]
+// 分开两层是因为原生滚动条去不掉箭头（见 CSS 注释），只能自己画一条 6px 的轨道
+var packWrap = document.createElement('div')
+packWrap.className = 'dshwv-packwrap'
 var packSeg = document.createElement('div')
 packSeg.className = 'dshwv-packseg'
-rowPack.appendChild(packSeg)
+var packBar = document.createElement('div')
+packBar.className = 'dshwv-packbar'
+packBar.title = '拖动可横向滚动角色列表'
+var packThumb = document.createElement('div')
+packThumb.className = 'dshwv-packthumb'
+packBar.appendChild(packThumb)
+packWrap.appendChild(packSeg)
+packWrap.appendChild(packBar)
+rowPack.appendChild(packWrap)
+// 滚动条滑块的位置/宽度 = 可视区在整条里的比例；不溢出就整条隐藏
+function dshwvSyncPackBar() {
+  try {
+    var cw = packSeg.clientWidth
+    var sw = packSeg.scrollWidth
+    if (!cw || sw <= cw + 1) { packBar.style.display = 'none'; return }
+    packBar.style.display = ''
+    var track = packBar.clientWidth || cw
+    var tw = Math.max(28, Math.round(track * cw / sw))
+    var max = sw - cw
+    var left = Math.round((packSeg.scrollLeft / max) * (track - tw))
+    packThumb.style.width = tw + 'px'
+    packThumb.style.left = Math.max(0, Math.min(track - tw, left)) + 'px'
+  } catch (err) {}
+}
+packSeg.addEventListener('scroll', function () { dshwvSyncPackBar() }, { passive: true })
+if (typeof ResizeObserver === 'function') {
+  try { new ResizeObserver(function () { dshwvSyncPackBar() }).observe(packSeg) } catch (err) {}
+}
+// 鼠标只有竖向滚轮：在这一条上滚 = 横向推（能滚才拦，否则交给菜单）
+packSeg.addEventListener('wheel', function (e) {
+  try {
+    if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return
+    if (packSeg.scrollWidth <= packSeg.clientWidth + 1) return
+    packSeg.scrollLeft += e.deltaY
+    e.preventDefault()
+  } catch (err) {}
+}, { passive: false })
+// 拖动滚动条滑块（pointer 事件，鼠标/触屏都能用；点轨道直接跳）
+var packBarDrag = null
+packBar.addEventListener('pointerdown', function (e) {
+  try {
+    e.preventDefault()
+    e.stopPropagation()          // 别冒到菜单外层的"点空白关闭"
+    var cw = packSeg.clientWidth
+    var sw = packSeg.scrollWidth
+    if (sw <= cw + 1) return
+    var rect = packBar.getBoundingClientRect()
+    var tw = packThumb.offsetWidth
+    var travel = Math.max(1, rect.width - tw)
+    if (e.target !== packThumb) {
+      // 点空白轨道：滑块中心对齐点击处，再从这个位置起拖
+      var ratio = Math.max(0, Math.min(1, (e.clientX - rect.left - tw / 2) / travel))
+      packSeg.scrollLeft = ratio * (sw - cw)
+      dshwvSyncPackBar()
+    }
+    packBarDrag = { x: e.clientX, left: packSeg.scrollLeft }
+    packBar.classList.add('dshwv-packbar-drag')
+    try { packBar.setPointerCapture(e.pointerId) } catch (err) {}
+  } catch (err) {}
+})
+packBar.addEventListener('pointermove', function (e) {
+  if (!packBarDrag) return
+  try {
+    var cw = packSeg.clientWidth
+    var sw = packSeg.scrollWidth
+    var travel = Math.max(1, packBar.clientWidth - packThumb.offsetWidth)
+    packSeg.scrollLeft = packBarDrag.left + ((e.clientX - packBarDrag.x) / travel) * (sw - cw)
+    dshwvSyncPackBar()
+  } catch (err) {}
+})
+function dshwvEndPackDrag(e) {
+  if (!packBarDrag) return
+  packBarDrag = null
+  packBar.classList.remove('dshwv-packbar-drag')
+  try { if (e && e.pointerId != null) packBar.releasePointerCapture(e.pointerId) } catch (err) {}
+}
+packBar.addEventListener('pointerup', dshwvEndPackDrag)
+packBar.addEventListener('pointercancel', dshwvEndPackDrag)
+packBar.addEventListener('click', function (e) { e.stopPropagation() })
 rowPack.style.display = 'none'
 menuBox.insertBefore(rowPack, rowRole)
 // 立刻画一次按钮（用兜底表），不等接口 —— 菜单打开就有得点
@@ -20253,6 +20364,8 @@ function toggleMenu() {
   menuOpen = !menuOpen
   if (menuOpen) positionMenu()
   menuBox.classList.toggle('dshwv-menu-open', menuOpen)
+  // 菜单刚展开时才有真实宽度：重新量一次，避免自绘滚动条停在"不溢出"的旧状态
+  if (menuOpen) { try { dshwvSyncPackBar() } catch (err) {} }
   if (menuOpen && !menuBtnHide) menuBtn.classList.add('dshwv-menu-btn-visible')
   // 汉堡按钮关闭菜单时同样复位用量子界面(用量态时滑回主菜单态,
   // 主菜单态时 hideUsageSub 守卫直接返回),避免下次打开仍停留在用量视图
