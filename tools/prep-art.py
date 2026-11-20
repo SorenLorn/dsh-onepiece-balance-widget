@@ -180,14 +180,25 @@ def bleed_colors(im, radius=BLEED):
     return im
 
 
-def drop_enclosed(cand, im, min_area=8):
+def drop_enclosed(cand, im):
     """把"被角色围住、与画布边缘不连通"的背景块也去掉。
 
     抬起的胳膊和下巴之间会围出一块背景，从画布边缘的洪水填充到不了那儿，
-    它就留成实心白块。实测特征（灰像素占比 / 亮度标准差）：
-        腋下背景块 43% / 10.1；眼睛 4-7% / 6.4-7.1；牙齿 3-4% / 4.8-5.7
-    所以用「灰占比 > 20% 或标准差 > 9」判定；小于 400px 的小块另有一套判定。
+    它就留成实心白块。
+
+    判据必须**只认"和画布底色一样平的纯白"**，不能按"亮 + 低饱和"泛化 ——
+    角色身上的白（眼白、牙齿、白衣褶皱、云朵暗部、武器白段）都有柔和阴影：
+        眼白/嘴内     均值 247、标准差 11、暗像素 13%
+        白衣褶皱      均值 240~245、标准差 10~18、暗像素 20~60%
+        封闭背景空隙  均值 250、标准差 2~4、暗像素 1~3%
+    早先用「标准差 > 9 或暗像素 > 20%」判背景，等于把上面这些都删了，
+    眼睛和白衣直接被打穿。现在改成四个条件同时成立才删，小区域一律保留。
     """
+    BG_MEAN = 249.0     # 平均亮度要贴到纯白
+    BG_HARD = 0.08      # 亮度 < 245 的像素占比上限
+    BG_SD = 7.0         # 亮度标准差上限（真背景是平的）
+    BG_AREA = 1200      # 太小的一律当角色细节（眼白高光、牙齿缝）
+
     w, h = cand.size
     px = cand.load()
     ip = im.load()
@@ -200,7 +211,7 @@ def drop_enclosed(cand, im, min_area=8):
             seen[y0 * w + x0] = 1
             pts = []
             s = s2 = 0.0
-            gray = 0
+            hard = 0
             while q:
                 x, y = q.popleft()
                 r, g, b = ip[x, y]
@@ -208,7 +219,7 @@ def drop_enclosed(cand, im, min_area=8):
                 s += v
                 s2 += v * v
                 if v < 245:
-                    gray += 1
+                    hard += 1
                 pts.append((x, y))
                 for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
                     nx, ny = x + dx, y + dy
@@ -218,21 +229,14 @@ def drop_enclosed(cand, im, min_area=8):
                             seen[j] = 1
                             q.append((nx, ny))
             n = len(pts)
-            if n < min_area:
+            if n < BG_AREA:
                 continue
             mean = s / n
             sd = max(0.0, s2 / n - mean * mean) ** 0.5
-            gray_frac = gray / n
-            if n < 400:
-                # 小块：正常画面的白色块都远大于 400px（眼睛/牙齿约 4000px），
-                # 这个区间里只有"背景残渣"和"极扁的纯白"两种。
-                if gray_frac > 0.25 or (sd < 2.0 and mean > 248):
-                    for (x, y) in pts:
-                        px[x, y] = 128
+            if mean < BG_MEAN or sd > BG_SD or hard / n > BG_HARD:
                 continue
-            if gray_frac > 0.20 or sd > 9.0:
-                for (x, y) in pts:
-                    px[x, y] = 128
+            for (x, y) in pts:
+                px[x, y] = 128
 
 
 def matte(path, clear_rect=None):
