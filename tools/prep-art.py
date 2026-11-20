@@ -34,6 +34,9 @@ MAXW = 0.94            # 角色宽度上限（带鹿角/大翅膀的角色靠这
 BOTTOM = 0.02          # 底部留白比例
 
 BLEED = 10             # 边缘带颜色扩散半径（源图像素）；要 > 缩小时的滤波支撑半径
+TAIL = 26              # alpha 低于此值直接归零：高斯模糊会留 2~3px 的淡尾巴，
+                       # 浅色角色旁边这条尾巴就是深色界面上的"白光晕"
+AA_KNEE = 235          # alpha 高于此值直接拉满，只留 1px 抗锯齿过渡
 
 # 包 id → 中文名（pack.json 的 name 字段）
 PACK_NAMES = {
@@ -116,6 +119,67 @@ def edge_white_ratio(im):
     return (white / tot * 100.0) if tot else 0.0, tot
 
 
+def tighten_alpha(a):
+    """砍掉 alpha 的淡尾巴，把 2~3px 的柔和过渡压成 1px 抗锯齿。
+
+    高斯模糊保证边缘不锯齿，但也会在轮廓外留一圈 alpha 5~30 的像素。
+    深色界面上这圈像素的亮度贡献是 (角色色 × alpha)，浅色角色旁边就是肉眼可见的白光晕，
+    所以低 alpha 一律归零、高 alpha 直接拉满，只保留中间 1px 的过渡。
+    """
+    span = float(AA_KNEE - TAIL)
+    return a.point(lambda v: 0 if v < TAIL else (255 if v >= AA_KNEE else int(round((v - TAIL) * 255.0 / span))))
+
+
+def decontaminate(im, reach=2):
+    """把轮廓最外 1~2px 的"被白底污染的颜色"换成内侧的真实颜色。
+
+    bleed_colors 只管 alpha < 255 的像素，但**完全不透明**的最外圈同样脏：
+    原图的抗锯齿/JPEG 压缩会把描边和背景混成 (255,239,214) 这种浅色，
+    抠图后这圈仍是 alpha=255，于是深色底上就显出一条浅色描边线。
+    做法：找出「不透明但离透明区 ≤ reach px」的像素，用再往内（≥3px）的颜色覆盖。
+    只覆盖颜色、不动 alpha，所以轮廓形状一点不变。
+    """
+    w, h = im.size
+    alpha = im.split()[3]
+    near = alpha.point(lambda v: 255 if v == 0 else 0)
+    near = near.filter(ImageFilter.MaxFilter(2 * reach + 1))           # 透明区外扩 reach
+    solid = alpha.point(lambda v: 255 if v >= 250 else 0)
+    ring = ImageChops.multiply(solid, near)                            # 不透明但贴着透明区
+    rb = ring.tobytes()
+
+    px = im.load()
+    dirs = ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1))
+    dirt = [(i % w, i // w) for i in range(w * h) if rb[i]]
+    if not dirt:
+        return im
+    dirt_set = set(dirt)
+    # 队列种子：紧贴污染圈、且自己没被污染的不透明像素（颜色可信）
+    from collections import deque
+    q = deque()
+    filled = set()
+    for (x, y) in dirt:
+        for dx, dy in dirs:
+            nx, ny = x + dx, y + dy
+            if not (0 <= nx < w and 0 <= ny < h):
+                continue
+            if (nx, ny) in dirt_set:
+                continue
+            r, g, b, a = px[nx, ny]
+            if a >= 250:
+                q.append(((x, y), (r, g, b)))
+                filled.add((x, y))
+                break
+    while q:
+        (x, y), c = q.popleft()
+        px[x, y] = (c[0], c[1], c[2], px[x, y][3])
+        for dx, dy in dirs:
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < w and 0 <= ny < h and (nx, ny) in dirt_set and (nx, ny) not in filled:
+                filled.add((nx, ny))
+                q.append(((nx, ny), c))
+    return im
+
+
 def bleed_colors(im, radius=BLEED):
     """把实心区的颜色向外扩散到 alpha 边缘带（defringe）。
 
@@ -124,13 +188,16 @@ def bleed_colors(im, radius=BLEED):
     摊到描边外，深色背景上就是一圈亮边。
     这里改成"用最近的角色色覆盖边缘带"，透明区也带上角色色，
     于是无论是直接显示还是缩放，边缘混出来的都是角色色而不是白色。
+
+    取色用 **最近实心像素的颜色**（先到先得），不做邻居平均 —— 平均会把
+    相邻的两种颜色混出中间亮度，浅色皮肤挨着深色描边时，平均色仍然偏亮，
+    深色底上依旧能看到一圈淡光。
     """
     w, h = im.size
     alpha = im.split()[3]
     ab = alpha.tobytes()
     px = im.load()
     known = bytearray(w * h)
-    frontier = []
     dirs = ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1))
     # 种子只取"贴着边缘的实心像素"，避免把整块实心区都塞进队列
     for y in range(h):
@@ -138,6 +205,7 @@ def bleed_colors(im, radius=BLEED):
         for x in range(w):
             if ab[base + x] >= 250:
                 known[base + x] = 1
+    frontier = []
     for y in range(h):
         base = y * w
         for x in range(w):
@@ -154,29 +222,18 @@ def bleed_colors(im, radius=BLEED):
     for _ in range(radius):
         cand = {}
         for (x, y) in frontier:
+            c = px[x, y]
             for dx, dy in dirs:
                 nx, ny = x + dx, y + dy
                 if 0 <= nx < w and 0 <= ny < h and not known[ny * w + nx]:
-                    cand[(nx, ny)] = 1
+                    cand.setdefault((nx, ny), c)
         if not cand:
             break
-        cand = list(cand)
-        # 取色只认「上一层及更早」的像素，避免同层之间互相传染还没上色的白
-        for (x, y) in cand:
-            sr = sg = sb = n = 0
-            for dx, dy in dirs:
-                nx, ny = x + dx, y + dy
-                if 0 <= nx < w and 0 <= ny < h and known[ny * w + nx]:
-                    r, g, b, _a = px[nx, ny]
-                    sr += r
-                    sg += g
-                    sb += b
-                    n += 1
-            if n:
-                px[x, y] = (sr // n, sg // n, sb // n, px[x, y][3])
+        for (x, y), c in cand.items():
+            px[x, y] = (c[0], c[1], c[2], px[x, y][3])
         for (x, y) in cand:
             known[y * w + x] = 1
-        frontier = cand
+        frontier = list(cand.keys())
     return im
 
 
@@ -278,18 +335,19 @@ def matte(path, clear_rect=None):
     alpha = alpha.filter(ImageFilter.MinFilter(3))       # 收 1px，去掉描边外侧的晕边
     alpha = alpha.point(lambda v: 0 if v < 8 else 255)   # 灭掉残留的极淡噪点
     alpha = alpha.filter(ImageFilter.GaussianBlur(0.7))  # 只留 1px 抗锯齿过渡
+    alpha = tighten_alpha(alpha)                         # 砍掉模糊留下的淡尾巴（白晕来源）
 
     out = im.convert('RGBA')
     out.putalpha(alpha)
-    return bleed_colors(out)
+    return bleed_colors(decontaminate(out))
 
 
 def load_precut(path):
     """已经抠好的图：把 253/254 这类"接近满"的 alpha 拉满，再补白边。"""
     im = Image.open(path).convert('RGBA')
     a = im.split()[-1].point(lambda v: 255 if v >= 200 else (0 if v <= 8 else v))
-    im.putalpha(a)
-    return bleed_colors(im)
+    im.putalpha(tighten_alpha(a))
+    return bleed_colors(decontaminate(im))
 
 
 def normalize(im):
@@ -411,15 +469,39 @@ def scaffold(pack, out_dir):
         fh.write('\n')
 
 
+def halo_stats(im, band_max=80, bright=200):
+    """轮廓外那圈半透明像素的亮度 —— 深色界面上"白光晕"的量化指标。
+
+    白边（近白像素占比）测的是"颜色有多白"，光晕测的是"低 alpha 的亮像素有多少"：
+    后者才是深色底上肉眼看到的那圈雾。alpha ≤ band_max 的像素里，
+    亮度 > bright 的数量越多、平均亮度越高，光晕越明显。
+    """
+    px = im.load()
+    w, h = im.size
+    band = glow = 0
+    tot = 0.0
+    for y in range(0, h, 2):
+        for x in range(0, w, 2):
+            r, g, b, a = px[x, y]
+            if 0 < a <= band_max:
+                band += 1
+                v = (r + g + b) / 3.0
+                tot += v
+                if v > bright:
+                    glow += 1
+    return band, glow, (tot / band if band else 0.0)
+
+
 def check():
-    """只统计现有帧的白边残留，不改任何文件。"""
+    """只统计现有帧的白边残留与光晕，不改任何文件。"""
     import glob
-    print(f"{'帧':<28}{'白边占比':>10}{'边缘样本':>10}")
-    print('-' * 50)
+    print(f"{'帧':<28}{'白边占比':>10}{'外圈像素':>10}{'外圈亮像素':>12}{'外圈均亮':>10}")
+    print('-' * 72)
     for f in sorted(glob.glob(os.path.join(ROOT, 'assets', 'packs', '*', '*.png'))):
         im = Image.open(f).convert('RGBA')
         ratio, tot = edge_white_ratio(im)
-        print(f"{os.path.relpath(f, ROOT):<28}{ratio:>9.1f}%{tot:>10}")
+        band, glow, mean = halo_stats(im)
+        print(f"{os.path.relpath(f, ROOT):<28}{ratio:>9.1f}%{band:>10}{glow:>12}{mean:>10.1f}")
 
 
 def main():
@@ -454,10 +536,13 @@ def main():
                 continue
             im = Image.open(p).convert('RGBA')
             before[(pack, name)] = edge_white_ratio(im)[0]
-            by_pack.setdefault(pack, []).append((name, bleed_colors(im), None, '(原地)', False))
+            # 这两帧的浅色圈是旧管线留下的、比 reach 还宽，先整体收 1px 把脏边切掉
+            a = im.split()[3].filter(ImageFilter.MinFilter(3))
+            im.putalpha(tighten_alpha(a))
+            by_pack.setdefault(pack, []).append((name, bleed_colors(decontaminate(im, reach=3)), None, '(原地)', False))
 
-    print(f"{'包':<9}{'源文件':<20}{'输出':<12}{'缩放后':<12}{'占高':<8}{'白边(前→后)'}")
-    print('-' * 96)
+    print(f"{'包':<9}{'源文件':<20}{'输出':<12}{'缩放后':<12}{'占高':<8}{'白边(前→后)':<16}{'外圈亮像素':<10}")
+    print('-' * 110)
     for pack, items in by_pack.items():
         if len(items) > 1:
             print(f'  [{pack}] 统一曝光')
@@ -469,11 +554,13 @@ def main():
             im.save(os.path.join(out_dir, dst), 'PNG', optimize=True)
             bb = im.split()[-1].getbbox()
             after = edge_white_ratio(im)[0]
+            _band, glow, glow_mean = halo_stats(im)
             prev = before.get((pack, dst))
             delta = f'{prev:.1f}%→{after:.1f}%' if prev is not None else f'—→{after:.1f}%'
             print(f"{pack:<9}{src:<20}{dst:<12}"
                   f"{str(bb[2]-bb[0])+'x'+str(bb[3]-bb[1]):<12}"
-                  f"{(bb[3]-bb[1])/CANVAS*100:>5.1f}%  {delta}")
+                  f"{(bb[3]-bb[1])/CANVAS*100:>5.1f}%  {delta:<16}"
+                  f"{glow:>4} (均亮 {glow_mean:.0f})")
         scaffold(pack, out_dir)
 
 
