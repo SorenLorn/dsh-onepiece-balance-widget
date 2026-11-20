@@ -2,15 +2,21 @@
 # -*- coding: utf-8 -*-
 """把生成的立绘规范化为挂件可用的角色帧（支持多个角色包）。
 
-做四件事：
+做五件事：
   1. 去底（纯白底 / ChatGPT 的"假透明"棋盘格底都能处理；已经抠好的图可跳过）
   2. 擦掉指定矩形里的水印
-  3. 统一到 1024x1024：角色高 88%、底边距 2%、水平居中、宽度不超 94%
-  4. 导出 PNG-24（带 alpha）
+  3. 去白边（defringe）：把角色内部的颜色向外扩散到 alpha 边缘带，
+     让描边外侧那一圈不再残留"白底混色"，深色界面上不会出现亮圈
+  4. 统一到 1024x1024：角色高 88%、底边距 2%、水平居中、宽度不超 94%
+  5. 导出 PNG-24（带 alpha）
+
+状态命名（与 pack.json 的 frames 键一致）：
+    idle = 待机    tap = 被点击    wait = 等待回答    warning = 余额告警
 
 用法：
     python tools/prep-art.py            # 处理全部
-    python tools/prep-art.py chopper    # 只处理指定包
+    python tools/prep-art.py nami       # 只处理指定包
+    python tools/prep-art.py --check    # 只统计现有帧的白边残留，不改文件
 
 依赖：Pillow（pip install pillow）
 原图不会被修改，只读取。
@@ -27,6 +33,21 @@ FILL = 0.88            # 角色高度占画布比例
 MAXW = 0.94            # 角色宽度上限（带鹿角/大翅膀的角色靠这条兜底）
 BOTTOM = 0.02          # 底部留白比例
 
+BLEED = 10             # 边缘带颜色扩散半径（源图像素）；要 > 缩小时的滤波支撑半径
+
+# 包 id → 中文名（pack.json 的 name 字段）
+PACK_NAMES = {
+    'luffy': '路飞',
+    'chopper': '乔巴',
+    'nami': '娜美',
+    'usopp': '乌索普',
+    'sanji': '山治',
+    'zoro': '索隆',
+    'robin': '罗宾',
+    'jinbe': '甚平',
+    'brook': '布鲁克',
+}
+
 # pack: 输出到 assets/packs/<pack>/
 # src : 工作区根目录下的原图
 # rect: 需要先擦成白色的矩形（水印），None = 没有
@@ -36,13 +57,127 @@ JOBS = [
     ('luffy', '路飞待机.jpg', 'idle.png', (250, 792, 610, 851), False),
     ('luffy', '路飞被点击.png', 'tap.png', None, False),
     ('luffy', '路飞等待回答.png', 'wait.png', None, False),
-    ('luffy', '路飞余额告警.png', 'warning.png', None, False),
     # —— 乔巴 ——
     ('chopper', '乔巴待机.png', 'idle.png', None, True),
     ('chopper', '乔巴被点击.png', 'tap.png', None, False),
     ('chopper', '乔巴等待回答.png', 'wait.png', None, False),
-    ('chopper', '乔巴余额警告.png', 'warning.png', None, False),
+    # —— 娜美 ——
+    ('nami', '待机娜美.png', 'idle.png', None, False),
+    ('nami', '被点击娜美.png', 'tap.png', None, False),
+    ('nami', '等待回复娜美.png', 'wait.png', None, False),
+    # —— 乌索普 ——
+    ('usopp', '待机乌索普.png', 'idle.png', None, False),
+    ('usopp', '被点击乌索普.png', 'tap.png', None, False),
+    ('usopp', '等待回复乌索普.png', 'wait.png', None, False),
+    # —— 山治 ——
+    ('sanji', '待机山治.png', 'idle.png', None, False),
+    ('sanji', '被点击山治.png', 'tap.png', None, False),
+    ('sanji', '等待回复山治.png', 'wait.png', None, False),
+    # —— 索隆 ——
+    ('zoro', '索隆待机.png', 'idle.png', None, False),
+    ('zoro', '被点击索隆.png', 'tap.png', None, False),
+    ('zoro', '等待回复索隆.png', 'wait.png', None, False),
+    # —— 罗宾 ——
+    ('robin', '待机罗宾.png', 'idle.png', None, False),
+    ('robin', '被点击罗宾.png', 'tap.png', None, False),
+    ('robin', '等待回复罗宾.png', 'wait.png', None, False),
+    # —— 甚平 ——
+    ('jinbe', '甚平待机.png', 'idle.png', None, False),
+    ('jinbe', '被点击甚平.png', 'tap.png', None, False),
+    ('jinbe', '等待回复甚平.png', 'wait.png', None, False),
+    # —— 布鲁克 ——
+    ('brook', '布鲁克待机.png', 'idle.png', None, False),
+    ('brook', '被点击布鲁克.png', 'tap.png', None, False),
+    ('brook', '等待回复布鲁克.png', 'wait.png', None, False),
 ]
+
+# 没有对应原图、只能原地去白边的帧（已经归一过，不再走缩放，避免二次重采样）
+STATIC_FRAMES = {
+    'luffy': ['warning.png'],
+    'chopper': ['warning.png'],
+}
+
+# 新包沿用的公共素材（每个角色可以后续换成自己的）
+SCAFFOLD_FROM = 'luffy'
+
+
+def edge_white_ratio(im):
+    """半透明边缘带里"近白像素"的占比 —— 白边残留的量化指标。"""
+    px = im.load()
+    w, h = im.size
+    tot = white = 0
+    for y in range(0, h, 2):
+        for x in range(0, w, 2):
+            r, g, b, a = px[x, y]
+            if 4 < a < 250:
+                tot += 1
+                if min(r, g, b) > 200 and max(r, g, b) - min(r, g, b) < 25:
+                    white += 1
+    return (white / tot * 100.0) if tot else 0.0, tot
+
+
+def bleed_colors(im, radius=BLEED):
+    """把实心区的颜色向外扩散到 alpha 边缘带（defringe）。
+
+    为什么不直接"按 alpha 反算原色"：纯白底抠图后边缘像素是 c = a*原色 + (1-a)*白，
+    反算要除以 alpha，alpha 很小时是除零噪声；而缩小时那圈近白像素还会被滤波
+    摊到描边外，深色背景上就是一圈亮边。
+    这里改成"用最近的角色色覆盖边缘带"，透明区也带上角色色，
+    于是无论是直接显示还是缩放，边缘混出来的都是角色色而不是白色。
+    """
+    w, h = im.size
+    alpha = im.split()[3]
+    ab = alpha.tobytes()
+    px = im.load()
+    known = bytearray(w * h)
+    frontier = []
+    dirs = ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1))
+    # 种子只取"贴着边缘的实心像素"，避免把整块实心区都塞进队列
+    for y in range(h):
+        base = y * w
+        for x in range(w):
+            if ab[base + x] >= 250:
+                known[base + x] = 1
+    for y in range(h):
+        base = y * w
+        for x in range(w):
+            if not known[base + x]:
+                continue
+            for dx, dy in dirs:
+                nx, ny = x + dx, y + dy
+                if 0 <= nx < w and 0 <= ny < h and not known[ny * w + nx]:
+                    frontier.append((x, y))
+                    break
+    if not frontier:
+        return im
+
+    for _ in range(radius):
+        cand = {}
+        for (x, y) in frontier:
+            for dx, dy in dirs:
+                nx, ny = x + dx, y + dy
+                if 0 <= nx < w and 0 <= ny < h and not known[ny * w + nx]:
+                    cand[(nx, ny)] = 1
+        if not cand:
+            break
+        cand = list(cand)
+        # 取色只认「上一层及更早」的像素，避免同层之间互相传染还没上色的白
+        for (x, y) in cand:
+            sr = sg = sb = n = 0
+            for dx, dy in dirs:
+                nx, ny = x + dx, y + dy
+                if 0 <= nx < w and 0 <= ny < h and known[ny * w + nx]:
+                    r, g, b, _a = px[nx, ny]
+                    sr += r
+                    sg += g
+                    sb += b
+                    n += 1
+            if n:
+                px[x, y] = (sr // n, sg // n, sb // n, px[x, y][3])
+        for (x, y) in cand:
+            known[y * w + x] = 1
+        frontier = cand
+    return im
 
 
 def drop_enclosed(cand, im, min_area=8):
@@ -137,19 +272,20 @@ def matte(path, clear_rect=None):
 
     alpha = cand.point(lambda v: 0 if v == 128 else 255)
     alpha = alpha.filter(ImageFilter.MinFilter(3))       # 收 1px，去掉描边外侧的晕边
-    alpha = alpha.filter(ImageFilter.GaussianBlur(0.7))
+    alpha = alpha.point(lambda v: 0 if v < 8 else 255)   # 灭掉残留的极淡噪点
+    alpha = alpha.filter(ImageFilter.GaussianBlur(0.7))  # 只留 1px 抗锯齿过渡
 
     out = im.convert('RGBA')
     out.putalpha(alpha)
-    return out
+    return bleed_colors(out)
 
 
 def load_precut(path):
-    """已经抠好的图：把 253/254 这类"接近满"的 alpha 拉满。"""
+    """已经抠好的图：把 253/254 这类"接近满"的 alpha 拉满，再补白边。"""
     im = Image.open(path).convert('RGBA')
     a = im.split()[-1].point(lambda v: 255 if v >= 200 else (0 if v <= 8 else v))
     im.putalpha(a)
-    return im
+    return bleed_colors(im)
 
 
 def normalize(im):
@@ -230,10 +366,66 @@ def match_exposure(frames):
     return out
 
 
+def scaffold(pack, out_dir):
+    """新包缺的公共素材补齐：pack.json / 音效 / 徽标。"""
+    import json
+    import shutil
+
+    src_dir = os.path.join(ROOT, 'assets', 'packs', SCAFFOLD_FROM)
+    for sub in ('sfx',):
+        s = os.path.join(src_dir, sub)
+        d = os.path.join(out_dir, sub)
+        if os.path.isdir(s) and not os.path.isdir(d):
+            shutil.copytree(s, d)
+    emb = os.path.join(out_dir, 'emblem.svg')
+    if not os.path.exists(emb):
+        try:
+            shutil.copyfile(os.path.join(src_dir, 'emblem.svg'), emb)
+        except OSError:
+            pass
+
+    manifest = os.path.join(out_dir, 'pack.json')
+    if os.path.exists(manifest):
+        return
+    frames = {k: f'{k}.png' for k in ('idle', 'tap', 'wait')
+              if os.path.exists(os.path.join(out_dir, f'{k}.png'))}
+    data = {
+        'name': PACK_NAMES.get(pack, pack),
+        'author': 'local',
+        'emblem': 'emblem.svg',
+        'emblemPos': 'top-right',
+        'frames': frames,
+        'sounds': {
+            'tap': 'sfx/snap.wav',
+            'land': 'sfx/thud.wav',
+            'cost': 'sfx/coin.wav',
+            'wait': 'sfx/alert.wav',
+        },
+    }
+    with open(manifest, 'w', encoding='utf-8') as fh:
+        json.dump(data, fh, ensure_ascii=False, indent=2)
+        fh.write('\n')
+
+
+def check():
+    """只统计现有帧的白边残留，不改任何文件。"""
+    import glob
+    print(f"{'帧':<28}{'白边占比':>10}{'边缘样本':>10}")
+    print('-' * 50)
+    for f in sorted(glob.glob(os.path.join(ROOT, 'assets', 'packs', '*', '*.png'))):
+        im = Image.open(f).convert('RGBA')
+        ratio, tot = edge_white_ratio(im)
+        print(f"{os.path.relpath(f, ROOT):<28}{ratio:>9.1f}%{tot:>10}")
+
+
 def main():
+    if '--check' in sys.argv:
+        check()
+        return
     only = sys.argv[1] if len(sys.argv) > 1 else ''
     # 先全部处理，再按包统一调色，最后落盘 —— 调色需要"同一包的所有帧"一起看
     by_pack = {}
+    before = {}
     for pack, src, dst, rect, precut in JOBS:
         if only and pack != only:
             continue
@@ -241,26 +433,44 @@ def main():
         if not os.path.exists(p):
             print(f'跳过（找不到）：{src}')
             continue
+        old = os.path.join(ROOT, 'assets', 'packs', pack, dst)
+        if os.path.exists(old):
+            before[(pack, dst)] = edge_white_ratio(Image.open(old).convert('RGBA'))[0]
         im = load_precut(p) if precut else matte(p, rect)
         out, bbox = normalize(im)
-        by_pack.setdefault(pack, []).append((dst, out, bbox, src))
+        by_pack.setdefault(pack, []).append((dst, out, bbox, src, True))
 
-    print(f"{'包':<9}{'源文件':<18}{'输出':<12}{'原始内容':<13}{'缩放后':<12}{'占高':<8}{'底边距'}")
-    print('-' * 86)
+    # 只有原图、没有独立状态图的帧（如 warning）：原地去白边，不重新归一
+    for pack, names in STATIC_FRAMES.items():
+        if only and pack != only:
+            continue
+        for name in names:
+            p = os.path.join(ROOT, 'assets', 'packs', pack, name)
+            if not os.path.exists(p):
+                continue
+            im = Image.open(p).convert('RGBA')
+            before[(pack, name)] = edge_white_ratio(im)[0]
+            by_pack.setdefault(pack, []).append((name, bleed_colors(im), None, '(原地)', False))
+
+    print(f"{'包':<9}{'源文件':<20}{'输出':<12}{'缩放后':<12}{'占高':<8}{'白边(前→后)'}")
+    print('-' * 96)
     for pack, items in by_pack.items():
         if len(items) > 1:
             print(f'  [{pack}] 统一曝光')
-            fixed = match_exposure([(d, im) for d, im, _b, _s in items])
-            items = [(d, fixed[i][1], b, s) for i, (d, im, b, s) in enumerate(items)]
+            fixed = match_exposure([(d, im) for d, im, _b, _s, _n in items])
+            items = [(d, fixed[i][1], b, s, n) for i, (d, im, b, s, n) in enumerate(items)]
         out_dir = os.path.join(ROOT, 'assets', 'packs', pack)
         os.makedirs(out_dir, exist_ok=True)
-        for dst, im, bbox, src in items:
+        for dst, im, bbox, src, _n in items:
             im.save(os.path.join(out_dir, dst), 'PNG', optimize=True)
             bb = im.split()[-1].getbbox()
-            print(f"{pack:<9}{src:<18}{dst:<12}"
-                  f"{str(bbox[2]-bbox[0])+'x'+str(bbox[3]-bbox[1]):<13}"
+            after = edge_white_ratio(im)[0]
+            prev = before.get((pack, dst))
+            delta = f'{prev:.1f}%→{after:.1f}%' if prev is not None else f'—→{after:.1f}%'
+            print(f"{pack:<9}{src:<20}{dst:<12}"
                   f"{str(bb[2]-bb[0])+'x'+str(bb[3]-bb[1]):<12}"
-                  f"{(bb[3]-bb[1])/CANVAS*100:>5.1f}%  {CANVAS-bb[3]:>4}px")
+                  f"{(bb[3]-bb[1])/CANVAS*100:>5.1f}%  {delta}")
+        scaffold(pack, out_dir)
 
 
 if __name__ == '__main__':

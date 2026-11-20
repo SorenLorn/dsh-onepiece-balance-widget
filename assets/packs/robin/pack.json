@@ -1,0 +1,17 @@
+{
+  "name": "罗宾",
+  "author": "local",
+  "emblem": "emblem.svg",
+  "emblemPos": "top-right",
+  "frames": {
+    "idle": "idle.png",
+    "tap": "tap.png",
+    "wait": "wait.png"
+  },
+  "sounds": {
+    "tap": "sfx/snap.wav",
+    "land": "sfx/thud.wav",
+    "cost": "sfx/coin.wav",
+    "wait": "sfx/alert.wav"
+  }
+}

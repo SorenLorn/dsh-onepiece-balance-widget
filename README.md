@@ -80,16 +80,19 @@ DeepSeek Harness（DSH）Web 界面右下角的常驻挂件：小鲸鱼气泡图
 
 角色不再只支持「一张静态图」：`assets/packs/<id>/` 目录里放 `pack.json` + 多张状态图 + 音效，挂件启动时按包加载。
 
-**内置两个包**：`luffy`（路飞）和 `chopper`（乔巴）。菜单里「形象」一行是分段按钮，点一下就切，选择记在 `localStorage` 的 `dshw-pack`；只有一个包时这一行自动隐藏。
+**内置九个包**（草帽一伙）：`luffy` 路飞、`chopper` 乔巴、`zoro` 索隆、`nami` 娜美、`usopp` 乌索普、`sanji` 山治、`robin` 罗宾、`jinbe` 甚平、`brook` 布鲁克。菜单里「形象」一行是分段按钮，点一下就切，选择记在 `localStorage` 的 `dshw-pack`；只有一个包时这一行自动隐藏。
 
 ```
 assets/packs/luffy/
 ├─ pack.json          帧映射 / 音效映射
-├─ idle.png           待机
-├─ tap.png            被点击（点角色、点泡泡）
-├─ wait.png           等待回答 / 授权
+├─ idle.png           待机        ← 原图「路飞待机」
+├─ tap.png            被点击      ← 原图「路飞被点击」
+├─ wait.png           等待回答    ← 原图「路飞等待回答」
+├─ warning.png        余额告警
 └─ sfx/  snap.wav  thud.wav  coin.wav  alert.wav
 ```
+
+状态键固定为 `idle` / `tap` / `wait` / `warning` 四个，`pack.json` 里指到同名 png。缺哪个就少哪个，不用占位图。
 
 ```json
 {
@@ -117,6 +120,20 @@ assets/packs/luffy/
 - **帧切换不改命中区**：点击判定按 `idle` 的 alpha 凸包计算。其余帧的轮廓不要和 `idle` 差太多，否则个别状态点击手感会偏。
 - **按压 / 松开音不走角色包**：那两条已有用户可配置的音效槽位（还能上传自己的片段），两边都播会一次点击响两声。
 - 想换角色：改 `localStorage` 的 `dshw-pack` 为包 id 后刷新；删包直接删目录。
+
+**素材流水线**：根目录那些命名不统一的原图（`待机娜美.png` / `被点击娜美.png` / `等待回复娜美.png`、`索隆待机.png`…）不会被代码直接引用，统一由 `tools/prep-art.py` 转成 `assets/packs/<id>/<state>.png`：
+
+1. 白底 / 棋盘格底 ⇒ alpha（洪水填充 + 内部封闭背景块剔除），原图带干净 alpha 的跳过抠图；
+2. **去白边**：把角色内部颜色逐层扩散到 alpha 边缘带，描边外侧不再残留"白底混色"，深色背景上不会出现亮圈；
+3. 归一 1024×1024：角色高 88%、底边距 2%、水平居中，宽度超 94% 时以宽度为准；
+4. 同包各帧统一曝光（只作用在有色像素上，白牙高光不动）；
+5. 缺 `pack.json` / `emblem.svg` / `sfx/` 的新包自动补齐。
+
+```bash
+python tools/prep-art.py          # 全部重跑
+python tools/prep-art.py nami     # 只处理一个包
+python tools/prep-art.py --check  # 只统计各帧白边残留，不改文件
+```
 
 内置音效由 `node tools/make-sfx.mjs` 程序合成（正弦/噪声 + 包络，44.1kHz/16bit 单声道），无采样来源，改参数即可重制。
 

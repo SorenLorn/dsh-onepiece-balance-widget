@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <defs>
+    <clipPath id="crownClip">
+      <path d="M35 30 C35 13 46 3 60 3 C74 3 85 13 85 30 Z"/>
+    </clipPath>
+
+    <!-- 骨头：细杆 + 两端各两颗圆球；只写形状不写颜色，靠外层 <use> 两遍上色 -->
+    <g id="bones">
+      <g transform="rotate(42 60 73)">
+        <rect x="2" y="63" width="116" height="9" rx="4.5"/>
+        <circle cx="7" cy="59" r="6.5"/><circle cx="7" cy="76" r="6.5"/>
+        <circle cx="113" cy="59" r="6.5"/><circle cx="113" cy="76" r="6.5"/>
+      </g>
+      <g transform="rotate(-42 60 73)">
+        <rect x="2" y="63" width="116" height="9" rx="4.5"/>
+        <circle cx="7" cy="59" r="6.5"/><circle cx="7" cy="76" r="6.5"/>
+        <circle cx="113" cy="59" r="6.5"/><circle cx="113" cy="76" r="6.5"/>
+      </g>
+    </g>
+
+    <!-- 颅骨：宽头 + 收窄下颌 -->
+    <path id="skull" d="M60 32 C42 32 30 44 30 58 C30 67 34 74 41 78 L44 90 C45 97 50 101 56 101 L64 101 C70 101 75 97 76 90 L79 78 C86 74 90 67 90 58 C90 44 78 32 60 32 Z"/>
+  </defs>
+
+  <use href="#bones" fill="#1B1B1B" stroke="#1B1B1B" stroke-width="10" stroke-linejoin="round"/>
+  <use href="#skull" fill="#1B1B1B" stroke="#1B1B1B" stroke-width="10" stroke-linejoin="round"/>
+  <use href="#bones" fill="#FFFFFF"/>
+  <use href="#skull" fill="#FFFFFF"/>
+
+  <!-- 牙齿：两行三列 -->
+  <g stroke="#1B1B1B" stroke-width="2.6" fill="none" stroke-linecap="round">
+    <line x1="44" y1="82" x2="76" y2="82"/>
+    <line x1="44" y1="82" x2="44" y2="97"/>
+    <line x1="76" y1="82" x2="76" y2="97"/>
+    <line x1="55" y1="82" x2="55" y2="99"/>
+    <line x1="65" y1="82" x2="65" y2="99"/>
+    <line x1="44" y1="90" x2="76" y2="90"/>
+  </g>
+
+  <!-- 眼窝 -->
+  <rect x="40" y="50" width="15" height="20" rx="6.5" fill="#1B1B1B"/>
+  <rect x="65" y="50" width="15" height="20" rx="6.5" fill="#1B1B1B"/>
+  <!-- 鼻腔 -->
+  <path d="M60 70 L55.5 78 L64.5 78 Z" fill="#1B1B1B" stroke="#1B1B1B" stroke-width="1.5" stroke-linejoin="round"/>
+
+  <!-- 草帽：冠 → 红带 → 帽檐（帽檐最后画，压住冠底） -->
+  <path d="M35 30 C35 13 46 3 60 3 C74 3 85 13 85 30 Z" fill="#F2C200"/>
+  <g clip-path="url(#crownClip)">
+    <rect x="33" y="15" width="54" height="6.5" fill="#C8262B"/>
+  </g>
+  <path d="M35 30 C35 13 46 3 60 3 C74 3 85 13 85 30 Z" fill="none" stroke="#1B1B1B" stroke-width="4.5" stroke-linejoin="round"/>
+  <ellipse cx="60" cy="30" rx="38" ry="7.5" fill="#F2C200" stroke="#1B1B1B" stroke-width="5"/>
+</svg>
