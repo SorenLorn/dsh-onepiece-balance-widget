@@ -1,123 +1,155 @@
-# DSH 海贼王记账挂件（One Piece Balance Widget for DSH）
+# DSH 海贼王记账挂件
 
-![DSH 海贼王记账挂件](assets/banner.png)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![DSH](https://img.shields.io/badge/DSH-bundle%20plugin-2f6f4e)
+![Characters](https://img.shields.io/badge/characters-9-orange)
 
-DeepSeek Harness（DSH）Web 界面右下角的常驻挂件：**草帽一伙 9 位角色**随状态换表情，同时显示 DeepSeek 余额、今日已用与每轮对话消耗；气泡内容可完全自定义（点击序列、模块化排版、并列加权出泡、随机语句 / 随机图片）。标准 DSH bundle 插件，`dsh plugin` 一键安装，不需要任何会话令牌。
+![宣传图](assets/banner.png)
 
-## 来源：本项目是二次开发
+DeepSeek Harness（DSH）Web 界面右下角的常驻挂件，显示 DeepSeek 余额、今日已用和每轮对话消耗，气泡内容可自定义。挂件上的角色可以在草帽一伙 9 人中切换，并随状态改变表情。
 
-本仓库是 **[月匠 MeteorNOX](https://github.com/MeteorNOX) 的 [DeepSeek-Balance-Whale-Widget](https://github.com/MeteorNOX/DeepSeek-Balance-Whale-Widget)（DSH 小鲸鱼记账挂件）的二次开发**（MIT 许可）。
+本项目是 [MeteorNOX/DeepSeek-Balance-Whale-Widget](https://github.com/MeteorNOX/DeepSeek-Balance-Whale-Widget) 的二次开发。记账、泡泡、音效、吸附等功能来自上游，改动集中在角色皮肤和视觉主题，明细见[与上游项目的关系](#与上游项目的关系)。
 
-记账内核、余额观测与校正、泡泡系统、音效系统、吸附与翻转、路由与打包方式**全部沿用上游**；本项目只做了三件事：
+## 功能
 
-| 改动 | 说明 |
-|---|---|
-| 角色皮肤制 | 把「一只鲸鱼」换成 9 套角色包，每套 3~4 张状态帧，菜单里即点即切 |
-| 素材流水线 | `tools/prep-art.py`：去底抠图 → 去白边 → 1024 归一 → 同包曝光统一 → 状态命名 |
-| 主题视觉 | 插件图标、宣传图、气泡纸张配色统一成海贼王风格 |
+- 余额与今日已用：60 秒自动刷新，点击角色立即刷新
+- 每轮消耗：按模型真实用量换算金额，每轮结束弹出气泡
+- 峰谷定价：工作日高峰/空闲时段与倒计时，周末全天谷价
+- 泡泡系统：点击序列、模块化排版、图片与随机语句
+- 音效：按压、每轮消耗、提问、授权四组事件，音量与开关独立可调
+- 拖拽吸附：四边吸附区可自定义，贴左时整体镜像
 
-> 记账口径、多厂商 API（34 个模板）、凭据安全边界、完整 FAQ 这些**上游原有功能**没有改动，本文不重复抄写，请直接看[上游 README](https://github.com/MeteorNOX/DeepSeek-Balance-Whale-Widget#readme)。
-
-## 角色与状态
-
-挂件菜单里点「形象」一行即可切换角色，立刻换脸（不用刷新），选择记在 `localStorage` 的 `dshw-pack`，下次打开沿用。
-
-| 包 id | 角色 | 待机 `idle` | 被点击 `tap` | 等待回答 `wait` | 余额告警 `warning` |
-|---|---|---|---|---|---|
-| `luffy` | 路飞 | ✅ | ✅ | ✅ | ✅ |
-| `chopper` | 乔巴 | ✅ | ✅ | ✅ | ✅ |
-| `zoro` | 索隆 | ✅ | ✅ | ✅ | — |
-| `nami` | 娜美 | ✅ | ✅ | ✅ | — |
-| `usopp` | 乌索普 | ✅ | ✅ | ✅ | — |
-| `sanji` | 山治 | ✅ | ✅ | ✅ | — |
-| `robin` | 罗宾 | ✅ | ✅ | ✅ | — |
-| `jinbe` | 甚平 | ✅ | ✅ | ✅ | — |
-| `brook` | 布鲁克 | ✅ | ✅ | ✅ | — |
-
-> 9 个按钮一排放不下，这一行是**横向滚动**的：按钮条下方有细滚动条（可拖动、点轨道跳转），鼠标滚轮在这一行上滚也会横向推；重新打开菜单时会把当前选中的角色滚进可视区。
-
-### 状态什么时候会变
-
-「状态帧」负责表情，「CSS 动作」叠在帧上负责位移与形变：
-
-| 触发场景 | 状态帧 | 动作 | 音效 |
-|---|---|---|---|
-| 静置常驻 | `idle` | 4.2s 呼吸 | — |
-| 点角色 / 点泡泡 | `tap` | 挤压回弹 | `tap` |
-| 松手 | 保持当前帧 | 落地缓冲 | `land` |
-| 拖拽超过 3px | 保持当前帧 | 小幅摆动 | — |
-| 每轮对话结算 | 保持当前帧 | 起跳 | `cost` |
-| 模型思考 / 输出中 | `wait` | 慢速点头 | — |
-| 提问 / 授权挂起 | `wait` | 循环摇晃 | `wait` |
-| 余额低于预警线 | `warning`（没有就回落 `idle`） | 抖动 | — |
-
-三条要记住的：
-
-- **缺帧自动降级**：没有 `warning` 的角色（目前 7 位）在告警时回落到 `idle`，不会报错、也不会出碎图。
-- **切角色不影响记账**：换皮肤只换图，账本、今日已用、泡泡配置都不动。
-- **加第 10 位角色**：把三张图放进 `assets/packs/<新id>/` 并写一份 `pack.json`，或用 `tools/prep-art.py` 从原图生成。
+上游的完整功能（多厂商余额接口、凭据安全边界、账本口径等）见[上游 README](https://github.com/MeteorNOX/DeepSeek-Balance-Whale-Widget#readme)。
 
 ## 安装
 
 ```bash
-# 从本仓库装（推荐）
+# 从本仓库安装
 dsh plugin --profile web add github:SorenLorn/dsh-onepiece-balance-widget
 
-# 或在本仓库根目录
+# 或在仓库根目录本地链接
 dsh plugin --profile web add link:.
 ```
 
-- 装完**重启 `dsh web`**，再 F5 刷新浏览器（图标、宿主侧路由都需要重启才生效；只改前端脚本则 Ctrl+F5 即可）。
-- ⚠️ npm 上的 `dsh-whale-widget` 是**上游鲸鱼版**（本 fork 未单独发版，`package.json` 的 name 沿用上游以免破坏 bundle 解析）——想装海贼王版请用上面的 `github:` 或 `link:.`。
-- 官方桌面客户端（Electron）请在桌面端会话里让 DSH 自己装，别加 `--profile web`。
+安装后重启 `dsh web`。宿主侧代码与图标只在启动时读取；只改前端脚本 `assets/whale-widget.js` 时，刷新页面即可。
 
-## 仓库结构
+npm 上的 `dsh-whale-widget` 是上游鲸鱼版。本仓库没有单独发版，`package.json` 的 `name` 沿用上游以避免 bundle 解析冲突，安装请用上面的 `github:` 或 `link:` 方式。
+
+桌面客户端（Electron）使用 `desktop` profile，安装时不要加 `--profile web`，在桌面端会话里执行安装命令即可。
+
+## 角色与状态
+
+菜单中「形象」一行是角色切换按钮，点击后立即生效，选择保存在 `localStorage` 的 `dshw-pack`。按钮一排放不下，该行可横向滚动，滚动条位于按钮下方，也支持鼠标滚轮横向推动。重新打开菜单时，当前角色会自动滚入可视区域。
+
+| 包 id | 角色 | idle | tap | wait | warning |
+|---|---|---|---|---|---|
+| `luffy` | 路飞 | 有 | 有 | 有 | 有 |
+| `chopper` | 乔巴 | 有 | 有 | 有 | 有 |
+| `zoro` | 索隆 | 有 | 有 | 有 | 无 |
+| `nami` | 娜美 | 有 | 有 | 有 | 无 |
+| `usopp` | 乌索普 | 有 | 有 | 有 | 无 |
+| `sanji` | 山治 | 有 | 有 | 有 | 无 |
+| `robin` | 罗宾 | 有 | 有 | 有 | 无 |
+| `jinbe` | 甚平 | 有 | 有 | 有 | 无 |
+| `brook` | 布鲁克 | 有 | 有 | 有 | 无 |
+
+状态帧决定表情，CSS 动作叠加在帧上负责位移与形变：
+
+| 场景 | 状态帧 | 动作 | 音效 |
+|---|---|---|---|
+| 静置 | `idle` | 4.2 秒呼吸 | 无 |
+| 点击角色或泡泡 | `tap` | 挤压回弹 | `tap` |
+| 松手 | 当前帧 | 落地缓冲 | `land` |
+| 拖拽超过 3px | 当前帧 | 小幅摆动 | 无 |
+| 每轮对话结算 | 当前帧 | 起跳 | `cost` |
+| 模型思考中 | `wait` | 慢速点头 | 无 |
+| 提问或授权挂起 | `wait` | 循环摇晃 | `wait` |
+| 余额低于预警线 | `warning` | 抖动 | 无 |
+
+没有 `warning` 帧的角色在告警时使用 `idle`，不会出错也不会显示碎图。切换角色只影响外观，账本、今日已用和泡泡配置都保持不变。
+
+## 目录结构
 
 ```text
 .
-├── package.json / cordis.patch.yml   # 插件元数据与挂载声明
-├── icon.png                          # 插件列表图标（256×256，圆角透明）
+├── package.json              插件元数据
+├── cordis.patch.yml          挂载声明
+├── icon.png                  插件列表图标，256×256
 ├── assets/
-│   ├── banner.png                    # 本文顶部宣传图
-│   ├── whale-widget.js               # 前端挂件本体（宿主按 mtime 热读取）
-│   ├── packs/                        # ★ 9 套角色皮肤：pack.json + 状态帧 + sfx/ + emblem.svg
-│   └── …                             # 默认形象、内置音效、泡泡图
+│   ├── banner.png            README 宣传图
+│   ├── whale-widget.js       前端挂件本体
+│   ├── packs/                角色包，每个目录含 pack.json、状态帧、sfx/、emblem.svg
+│   └── ...                   默认形象、内置音效、泡泡图
 ├── lib/
-│   ├── index.js                      # 宿主插件（路由 + 记账 + 角色包扫描）
-│   └── accounting.mjs                # 记账内核
+│   ├── index.js              宿主插件：路由、记账、角色包扫描
+│   └── accounting.mjs        记账内核
 └── tools/
-    ├── prep-art.py                   # ★ 素材流水线（下文）
-    ├── make-sfx.mjs                  # 程序合成音效
-    └── ci-audit.mjs                  # CI 自检
+    ├── prep-art.py           素材处理
+    ├── make-sfx.mjs          音效合成
+    └── ci-audit.mjs          CI 自检
 ```
 
-宿主对外暴露 **28 个 `/dsh-whale/*` 路由**（`/dsh-whale/packs.json` 等），全部接在 DSH 的浏览器信任栅栏后面：不带会话直接访问返回 **401/403** 属正常，说明路由已注册且栅栏在工作。
+宿主注册 28 个 `/dsh-whale/*` 路由，全部经过 DSH 的浏览器信任栅栏。未带会话直接访问返回 401 或 403，说明路由已注册。
 
-## 素材从哪来、怎么重跑
+## 素材处理
 
-角色帧由根目录的原始立绘经 `tools/prep-art.py` 生成，**原始立绘不入库**（体积大、命名也不统一，只作本地输入），仓库里只保留处理好的 `assets/packs/**`。
+角色帧由原始立绘经 `tools/prep-art.py` 生成。原始立绘不入库，只在本地作为输入，仓库里保留处理后的 `assets/packs/**`。
 
 ```bash
-python tools/prep-art.py            # 全部重跑
-python tools/prep-art.py nami       # 只处理一个包
-python tools/prep-art.py --check    # 只统计白边/光晕，不改文件
+python tools/prep-art.py            # 处理全部角色
+python tools/prep-art.py nami       # 处理单个角色
+python tools/prep-art.py --check    # 只输出白边与光晕指标，不写文件
 ```
 
-流水线的三条关键约束（都是踩过坑才定下来的）：
+脚本按以下顺序处理：
 
-1. **人物内部的白一律不动**：只去掉与画布边缘连通的白底。眼白、牙齿、白衣、帽子上的白色图案在亮度/标准差/面积上与被围住的背景空隙完全重叠，任何自动阈值都会把眼睛或帽子删掉；确实要抠的封闭空隙只能在脚本 `HOLES` 里按种子点手工指定。
-2. **去白边分三步**：轮廓最外 1~2px 是「角色色 × 白底」的混色（不透明但颜色脏）→ 用内侧颜色覆盖；半透明边缘带用最近的角色色扩散；高斯模糊留下的低 alpha 尾巴直接归零，只留 1px 抗锯齿。
-3. **同包各帧统一曝光**：AI 分次生成的四张图亮度会差 10~20 级，不拉齐摆在一起就是「一张深一张浅」。
+1. 去底色。只删除与画布边缘连通的白底，角色内部的白（眼白、牙齿、白衣、帽子上的图案）保持不透明。这些区域与被包住的背景空隙在亮度、标准差、面积上互相重叠，自动判断会误删角色部件，需要删除的封闭空隙在脚本的 `HOLES` 中按坐标指定。
+2. 去白边。轮廓外侧 1~2 像素是角色色与白底的混色，用内侧颜色覆盖；半透明边缘带用最近的角色色填充；模糊产生的低 alpha 过渡裁剪到 1 像素。
+3. 归一化与曝光。统一缩放到 1024×1024，角色高度占 88%，同一角色包内的各帧按彩色像素亮度对齐。
+
+新增角色时，在 `JOBS` 中按 `(包 id, 原图, 输出帧, 擦除矩形, 是否已抠图)` 增加三行即可，缺失的 `pack.json`、`emblem.svg` 和音效会自动补齐。
+
+## 与上游项目的关系
+
+| 能力 | 上游 | 本仓库 |
+|---|---|---|
+| 记账、余额观测、泡泡、音效、吸附、路由、打包 | 实现 | 沿用，未改动 |
+| 角色形象 | 单张鲸鱼图 | 9 套角色包，每套 3 至 4 张状态帧 |
+| 角色切换 | 上传图片或使用内置形象 | 菜单分段按钮，选择写入 `localStorage` |
+| 素材处理 | 无 | `tools/prep-art.py` |
+| 视觉 | 鲸鱼主题 | 海贼王主题的图标、宣传图与气泡配色 |
+
+上游作者为月匠（MeteorNOX），本项目遵循上游的 MIT 许可。
 
 ## 常见问题
 
-- **换了角色，记账数据会不会变？** 不会。角色只是外观，账本按密钥指纹分本，与皮肤无关。
-- **新图标什么时候显示？** `icon.png` 在宿主启动时读入，**重启 `dsh web` / 桌面客户端**才刷新。
-- **余额与官网对不上？** 先核对同一账户、同一币种、同一统计区间；有充值的话用「小鲸鱼记账 → 余额校正」填实际到账金额（口径说明见上游 README）。
-- **想改气泡里的内容？** 菜单 →「泡泡设置」逐模块编辑，金额用 `{cost}` 引用。
+**切换角色后记账数据会变吗？**
 
-## 致谢与许可
+不会。角色只影响显示，账本按密钥指纹分本存储，与皮肤无关。
 
-- **上游项目**：[MeteorNOX/DeepSeek-Balance-Whale-Widget](https://github.com/MeteorNOX/DeepSeek-Balance-Whale-Widget)，作者**月匠（MeteorNOX）**及其贡献者（完整名单见上游 README 的「致谢」）。本项目的记账、泡泡、音效、吸附、打包全部来自上游。
-- **本项目的美术**：角色立绘为 AI 图像工具生成后经脚本处理，属同人性质的演绎，**不是官方素材、也未获原作权利方授权**；来源与权利说明见 [PROVENANCE.md](PROVENANCE.md)。
-- **许可**：代码 MIT（见 [LICENSE](LICENSE)）；`assets/`、`icon.png` 下的美术素材**不在 MIT 覆盖范围**，随插件原样提供，不授予再许可。
+**换了图标为什么没有生效？**
+
+`icon.png` 在宿主启动时读取，需要重启 `dsh web` 或桌面客户端。
+
+**余额和官网对不上怎么办？**
+
+先确认是同一账户、同一币种、同一统计区间。有充值记录时，在「小鲸鱼记账 → 余额校正」中填写实际到账金额。统计口径见上游 README。
+
+**怎么改气泡内容？**
+
+菜单中的「泡泡设置」可以逐模块编辑，金额用 `{cost}` 引用。
+
+## 参与
+
+新增角色包、素材处理改进与问题反馈的流程见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
+## 许可证
+
+代码使用 MIT 许可，见 [LICENSE](LICENSE)。
+
+`assets/` 与 `icon.png` 中的美术素材不在 MIT 覆盖范围内，按原样随插件分发，不授予再许可。角色立绘由 AI 图像工具生成，属于同人演绎，不是官方素材。来源与权利说明见 [PROVENANCE.md](PROVENANCE.md)。
+
+## 致谢
+
+- [MeteorNOX/DeepSeek-Balance-Whale-Widget](https://github.com/MeteorNOX/DeepSeek-Balance-Whale-Widget)：上游项目与本项目的基础，作者月匠（MeteorNOX）及全部贡献者，名单见上游 README。
+- 上游的 Codex 端口维护在 [Codex-Whale-Public](https://github.com/Yang-huai406/Codex-Whale-Public)，与本仓库无关。
