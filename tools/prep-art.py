@@ -3,7 +3,11 @@
 """把生成的立绘规范化为挂件可用的角色帧（支持多个角色包）。
 
 做五件事：
-  1. 去底（纯白底 / ChatGPT 的"假透明"棋盘格底都能处理；已经抠好的图可跳过）
+  1. 去底：只去掉**与画布边缘连通**的白底（含 ChatGPT 的"假透明"棋盘格底）；
+     人物内部的白（眼睛、牙齿、白衣、帽子上的白色图案）一律不动 —— 这些区域
+     和被围住的背景空隙在亮度/标准差/面积上完全重叠，自动判定必然误伤，
+     确实需要抠掉的空隙只能由 HOLES 手工指定种子点。
+     已经抠好的图可跳过这一步。
   2. 擦掉指定矩形里的水印
   3. 去白边（defringe）：把角色内部的颜色向外扩散到 alpha 边缘带，
      让描边外侧那一圈不再残留"白底混色"，深色界面上不会出现亮圈
@@ -93,6 +97,11 @@ JOBS = [
     ('brook', '被点击布鲁克.png', 'tap.png', None, False),
     ('brook', '等待回复布鲁克.png', 'wait.png', None, False),
 ]
+
+# 逐帧指定"确实是背景、需要抠掉"的封闭空隙（**源图坐标的种子点**）。
+# 只写长得像背景、又和画布边缘不连通的空隙；人物的眼睛/牙齿/白衣一律不写。
+HOLES = {
+}
 
 # 没有对应原图、只能原地去白边的帧（已经归一过，不再走缩放，避免二次重采样）
 STATIC_FRAMES = {
@@ -237,66 +246,7 @@ def bleed_colors(im, radius=BLEED):
     return im
 
 
-def drop_enclosed(cand, im):
-    """把"被角色围住、与画布边缘不连通"的背景块也去掉。
-
-    抬起的胳膊和下巴之间会围出一块背景，从画布边缘的洪水填充到不了那儿，
-    它就留成实心白块。
-
-    判据必须**只认"和画布底色一样平的纯白"**，不能按"亮 + 低饱和"泛化 ——
-    角色身上的白（眼白、牙齿、白衣褶皱、云朵暗部、武器白段）都有柔和阴影：
-        眼白/嘴内     均值 247、标准差 11、暗像素 13%
-        白衣褶皱      均值 240~245、标准差 10~18、暗像素 20~60%
-        封闭背景空隙  均值 250、标准差 2~4、暗像素 1~3%
-    早先用「标准差 > 9 或暗像素 > 20%」判背景，等于把上面这些都删了，
-    眼睛和白衣直接被打穿。现在改成四个条件同时成立才删，小区域一律保留。
-    """
-    BG_MEAN = 249.0     # 平均亮度要贴到纯白
-    BG_HARD = 0.08      # 亮度 < 245 的像素占比上限
-    BG_SD = 7.0         # 亮度标准差上限（真背景是平的）
-    BG_AREA = 1200      # 太小的一律当角色细节（眼白高光、牙齿缝）
-
-    w, h = cand.size
-    px = cand.load()
-    ip = im.load()
-    seen = bytearray(w * h)
-    for y0 in range(h):
-        for x0 in range(w):
-            if px[x0, y0] != 255 or seen[y0 * w + x0]:
-                continue
-            q = deque([(x0, y0)])
-            seen[y0 * w + x0] = 1
-            pts = []
-            s = s2 = 0.0
-            hard = 0
-            while q:
-                x, y = q.popleft()
-                r, g, b = ip[x, y]
-                v = (r + g + b) / 3.0
-                s += v
-                s2 += v * v
-                if v < 245:
-                    hard += 1
-                pts.append((x, y))
-                for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-                    nx, ny = x + dx, y + dy
-                    if 0 <= nx < w and 0 <= ny < h:
-                        j = ny * w + nx
-                        if px[nx, ny] == 255 and not seen[j]:
-                            seen[j] = 1
-                            q.append((nx, ny))
-            n = len(pts)
-            if n < BG_AREA:
-                continue
-            mean = s / n
-            sd = max(0.0, s2 / n - mean * mean) ** 0.5
-            if mean < BG_MEAN or sd > BG_SD or hard / n > BG_HARD:
-                continue
-            for (x, y) in pts:
-                px[x, y] = 128
-
-
-def matte(path, clear_rect=None):
+def matte(path, clear_rect=None, holes=None):
     """白底/棋盘格底 ⇒ 带 alpha 的 RGBA。
 
     先按「低饱和 + 高亮度」生成背景候选掩膜，再在掩膜上从边缘洪水填充。
@@ -329,7 +279,12 @@ def matte(path, clear_rect=None):
         if px[s[0], s[1]] == 255:
             ImageDraw.floodfill(cand, s, 128, thresh=0)
 
-    drop_enclosed(cand, im)
+    # 封闭空隙只能由 HOLES 里的种子点手工指定：自动判定无法可靠区分
+    # 「眼睛/牙齿/白衣」（均值 245~253、sd 4~18、面积 2k~9k）和「真的背景空隙」
+    # （均值 249~250、sd 3~6、面积 3k~82k）——两组统计量完全重叠，任何阈值都会误伤。
+    for seed in (holes or ()):
+        if 0 <= seed[0] < w and 0 <= seed[1] < h and cand.load()[seed[0], seed[1]] == 255:
+            ImageDraw.floodfill(cand, seed, 128, thresh=0)
 
     alpha = cand.point(lambda v: 0 if v == 128 else 255)
     alpha = alpha.filter(ImageFilter.MinFilter(3))       # 收 1px，去掉描边外侧的晕边
@@ -522,7 +477,7 @@ def main():
         old = os.path.join(ROOT, 'assets', 'packs', pack, dst)
         if os.path.exists(old):
             before[(pack, dst)] = edge_white_ratio(Image.open(old).convert('RGBA'))[0]
-        im = load_precut(p) if precut else matte(p, rect)
+        im = load_precut(p) if precut else matte(p, rect, HOLES.get((pack, dst)))
         out, bbox = normalize(im)
         by_pack.setdefault(pack, []).append((dst, out, bbox, src, True))
 
