@@ -31,6 +31,8 @@ from collections import deque
 from PIL import Image, ImageDraw, ImageFilter, ImageChops
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# 原始立绘不入库，也可能被挪到仓库外面。按顺序找：仓库根 → 同级 dsh-one-pice/
+SRC_DIRS = [ROOT, os.path.join(os.path.dirname(ROOT), 'dsh-one-pice')]
 
 CANVAS = 1024          # 输出画布边长
 FILL = 0.88            # 角色高度占画布比例
@@ -103,11 +105,10 @@ JOBS = [
 HOLES = {
 }
 
-# 没有对应原图、只能原地去白边的帧（已经归一过，不再走缩放，避免二次重采样）
-STATIC_FRAMES = {
-    'luffy': ['warning.png'],
-    'chopper': ['warning.png'],
-}
+# 没有对应原图、只能原地处理的帧。
+# 这两张 warning 是旧管线留下的成品，没有大图可重抠；放进来自动处理只会每跑一次就再瘦一圈
+# （去污染要动边缘就得收 alpha，重复收就是重复腐蚀）。所以这里留空，成品直接沿用。
+STATIC_FRAMES = {}
 
 # 新包沿用的公共素材（每个角色可以后续换成自己的）
 SCAFFOLD_FROM = 'luffy'
@@ -294,7 +295,12 @@ def matte(path, clear_rect=None, holes=None):
 
     out = im.convert('RGBA')
     out.putalpha(alpha)
-    return bleed_colors(decontaminate(out))
+    # 去污染只改颜色、不动 alpha，不会把细结构切碎。
+    # 实测：JPEG 来源（路飞待机）的指尖想拉到 5px 反而把描边深色带进去、发黑，
+    # 所以统一用 2px；那一圈的奶油色在挂件实际尺寸（角色约 200px）下不足 1px，看不到。
+    reach = 2
+    out = decontaminate(out, reach=reach)
+    return bleed_colors(out)
 
 
 def load_precut(path):
@@ -470,8 +476,8 @@ def main():
     for pack, src, dst, rect, precut in JOBS:
         if only and pack != only:
             continue
-        p = os.path.join(ROOT, src)
-        if not os.path.exists(p):
+        p = next((os.path.join(d, src) for d in SRC_DIRS if os.path.exists(os.path.join(d, src))), '')
+        if not p:
             print(f'跳过（找不到）：{src}')
             continue
         old = os.path.join(ROOT, 'assets', 'packs', pack, dst)
@@ -491,9 +497,10 @@ def main():
                 continue
             im = Image.open(p).convert('RGBA')
             before[(pack, name)] = edge_white_ratio(im)[0]
-            # 这两帧的浅色圈是旧管线留下的、比 reach 还宽，先整体收 1px 把脏边切掉
-            a = im.split()[3].filter(ImageFilter.MinFilter(3))
-            im.putalpha(tighten_alpha(a))
+            # ⚠️ 这里只改颜色、不改 alpha：之前为压旧管线的脏边在这里收过 1px，
+            # 结果每跑一次就再瘦 1px（805→803→801…）。旧帧没有原图可重抠，
+            # 只能靠去污染改色，绝不能重复腐蚀轮廓。
+            im.putalpha(tighten_alpha(im.split()[3]))
             by_pack.setdefault(pack, []).append((name, bleed_colors(decontaminate(im, reach=3)), None, '(原地)', False))
 
     print(f"{'包':<9}{'源文件':<20}{'输出':<12}{'缩放后':<12}{'占高':<8}{'白边(前→后)':<16}{'外圈亮像素':<10}")
