@@ -1,13 +1,15 @@
 {
   "name": "dsh-whale-widget",
   "version": "0.5.0",
-  "description": "DSH Web 界面右下角的余额挂件:余额/今日已用/峰谷定价、自定义泡泡点击序列(文本/余额/今日/峰谷/图片/随机语句与并列加权选择)、逐行样式与字体、悬浮快捷编辑、音效与每轮消耗、自定义角色/动图/音效、吸附与翻转自定义；新增角色包与动作引擎（多状态图 + 呼吸/弹跳/拖拽/等待/告警动作 + 逐事件音效）",
+  "description": "DSH Web 界面右下角的余额挂件：余额、今日已用、每轮消耗与峰谷价，泡泡内容可自定义；内置草帽一伙 9 位角色皮肤（待机 / 被点击 / 等待回答，路飞与乔巴另有余额告警），菜单里可切换。",
   "keywords": [
     "dsh",
     "dsh-plugin",
     "deepseek-harness",
     "balance",
-    "widget"
+    "widget",
+    "onepiece",
+    "skin"
   ],
   "type": "module",
   "main": "lib/index.js",
@@ -22,12 +24,12 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/MeteorNOX/DeepSeek-Balance-Whale-Widget.git"
+    "url": "git+https://github.com/SorenLorn/dsh-onepiece-balance-widget.git"
   },
   "bugs": {
-    "url": "https://github.com/MeteorNOX/DeepSeek-Balance-Whale-Widget/issues"
+    "url": "https://github.com/SorenLorn/dsh-onepiece-balance-widget/issues"
   },
-  "homepage": "https://github.com/MeteorNOX/DeepSeek-Balance-Whale-Widget#readme",
+  "homepage": "https://github.com/SorenLorn/dsh-onepiece-balance-widget#readme",
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
